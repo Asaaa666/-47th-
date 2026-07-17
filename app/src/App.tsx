@@ -427,8 +427,11 @@ export default function App() {
               <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
               {selectedGroupName && <button onClick={() => setSelectedGroupName(null)} className="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-full transition">選択をクリア ✕</button>}
             </div>
-            <div className="relative bg-slate-100 rounded-xl border border-slate-200 overflow-hidden flex items-center justify-center min-h-[300px] max-h-[550px]">
-              <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-full object-contain max-h-[530px]" />
+           {/* mx-auto と max-w-3xl で、PCでも巨大化せずに中央に綺麗に収まります */}
+<div className="relative bg-slate-100 rounded-xl border border-slate-200 overflow-hidden w-full max-w-3xl mx-auto">
+  {/* h-auto block にすることで、枠の高さが画像の高さと100%完全に一致します */}
+  <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block" />
+  
               
               {activePins.map((pin, i) => {
                 const isSelected = selectedGroupName === pin.groupName;
