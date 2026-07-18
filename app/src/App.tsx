@@ -94,11 +94,12 @@ export default function App() {
     return params.get('location') || 'すべて';
   });
   
-  // 🔥 モーダル用とハイライト用で状態を分ける
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
-  // 場所や検索が変わったらハイライトを解除
+  // 🔥 マップへのスクロール用のRef
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setHighlightedGroupName(null);
   }, [filterLocation, searchTerm]);
@@ -324,19 +325,23 @@ export default function App() {
     return { bg: "bg-red-600", text: "text-red-600" };
   };
 
-  // 🔥 アイコン（ピンまたはリスト）を押した時の処理
-  const handleItemClick = (groupName: string) => {
+  // 🔥 押した場所（マップorリスト）に応じてスクロール方向を変える
+  const handleItemClick = (groupName: string, source: 'map' | 'list') => {
     if (filterLocation === 'すべて') {
-      // 「すべて」の時は中央にモーダルを出す
       setModalGroupName(groupName);
     } else {
-      // 「場所」指定の時は、カードを開いて自動スクロール
       setHighlightedGroupName(groupName);
+      
       setTimeout(() => {
-        const el = document.getElementById(`card-${groupName}`);
-        if (el) {
-          // ヘッダーに被らないように中央にスクロール
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (source === 'map') {
+          // マップを押した → 下のリストカードへスクロール
+          const el = document.getElementById(`card-${groupName}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (source === 'list') {
+          // リストを押した → 上のマップへスクロール
+          if (mapContainerRef.current) {
+            mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
         }
       }, 50);
     }
@@ -378,14 +383,14 @@ export default function App() {
           </div>
         </div>
 
-        {/* 🔥 マップ表示エリア（ズレ完全修正版） */}
+        {/* 🔥 マップ表示エリア（ズレ防止の厳格なコンテナ指定） */}
         {currentMapPath && (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+          <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 scroll-mt-24">
             <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
             
-            <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+            <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative">
               {/* text-[0] と leading-none で画像の下の謎の余白を完全に消し去る */}
-              <div className="relative w-full leading-none text-[0]">
+              <div className="relative inline-block w-full leading-none text-[0]">
                 <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
                 
                 {activePins.map((pin, i) => {
@@ -396,8 +401,9 @@ export default function App() {
                   return (
                     <div 
                       key={i} 
-                      onClick={() => handleItemClick(pin.groupName)} 
-                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-full hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
+                      onClick={() => handleItemClick(pin.groupName, 'map')} 
+                      // 💡 translate-y-1/2 に変更して、ピンの「中心」が座標になるように修正
+                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
                       style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                     >
                       <div className="flex flex-col items-center">
@@ -422,16 +428,14 @@ export default function App() {
           {filteredGroups.map((group, idx) => {
             const candidates = getLogoSrcCandidates(group.logo, group.name);
             const candidatesJson = JSON.stringify(candidates);
-            
-            // このカードが選択されているかどうか
             const isHighlighted = highlightedGroupName === group.name;
             
             return (
               <div 
                 key={idx} 
                 id={`card-${group.name}`}
-                onClick={() => handleItemClick(group.name)} 
-                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-200 scale-[1.02]' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
+                onClick={() => handleItemClick(group.name, 'list')} 
+                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer scroll-mt-24 ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-200 scale-[1.02]' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
               >
                 <div>
                   <div className="flex items-start gap-3">
