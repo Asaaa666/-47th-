@@ -62,8 +62,12 @@ const EXACT_FILE_MAP: Record<string, string[]> = {
   "中1学年参加": ["中１学年参加_ロゴ.png"],
   "スクラム食堂": ["スクラム食堂.png"],
   "おばけ屋敷": ["おばけ屋敷_ロゴ.jpeg"],
-  "レーザータグ": ["レーザータグ_ロゴ.png"]
-};
+   "レーザータグ": ["レーザータグ_ロゴ.png"],
+   "CHANCE and PLANTS": ["中２学年参加_ロゴ.png"],
+   "装飾部門": ["装飾部門_ロゴ.png"],
+   "浅野同窓会": ["浅野同窓会_ロゴ.png"],
+   "涼水": ["涼水_ロゴ.png"] ,
+    };
 
 interface Group {
   name: string;
