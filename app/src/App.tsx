@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 // あなたのスプレッドシートID
 const SPREADSHEET_ID = "1W4vJaSM0jlOQcjE-TstUby6v0K1bJeSY3GnSH8BDKhA"; 
 
-// 🔥 【絶対指定辞書】実際のファイル名とスプレッドシートの団体名を強力に紐付け
 const EXACT_FILE_MAP: Record<string, string[]> = {
   "化学部": ["化学部_ロゴ.png"],
   "物理部": ["物理部展#2026 ロゴ.png"],
@@ -95,9 +94,14 @@ export default function App() {
     return params.get('location') || 'すべて';
   });
   
-  const [selectedGroupName, setSelectedGroupName] = useState<string | null>(null);
-  
-  const mapRef = useRef<HTMLDivElement>(null);
+  // 🔥 モーダル用とハイライト用で状態を分ける
+  const [modalGroupName, setModalGroupName] = useState<string | null>(null);
+  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
+
+  // 場所や検索が変わったらハイライトを解除
+  useEffect(() => {
+    setHighlightedGroupName(null);
+  }, [filterLocation, searchTerm]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -113,27 +117,12 @@ export default function App() {
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
     const filenames: string[] = [];
     const name = groupName.trim();
-
-    const normalizeKey = (str: string) => {
-      return str.toLowerCase()
-        .replace(/\s+/g, '')
-        .replace(/[！!！＿_#＃＆&()（）]/g, '')
-        .replace(/鉄/g, '鉃');
-    };
-
+    const normalizeKey = (str: string) => str.toLowerCase().replace(/\s+/g, '').replace(/[！!！＿_#＃＆&()（）]/g, '').replace(/鉄/g, '鉃');
     const normName = normalizeKey(name);
 
-    if (originalLogo) {
-      filenames.push(originalLogo.trim());
-    }
-
-    if (name.includes("生物")) {
-      filenames.push("肩 生物部ロゴ.png");
-    }
-    if (name.includes("図書")) {
-      filenames.push("図書研究部 ロゴ.png");
-      filenames.push("図書委員会古本バザー _ロゴ.png");
-    }
+    if (originalLogo) filenames.push(originalLogo.trim());
+    if (name.includes("生物")) filenames.push("肩 生物部ロゴ.png");
+    if (name.includes("図書")) { filenames.push("図書研究部 ロゴ.png"); filenames.push("図書委員会古本バザー _ロゴ.png"); }
 
     if (EXACT_FILE_MAP[name]) {
       filenames.push(...EXACT_FILE_MAP[name]);
@@ -164,11 +153,9 @@ export default function App() {
     const img = e.target as HTMLImageElement;
     const candidatesStr = img.getAttribute('data-candidates');
     if (!candidatesStr) return;
-
     try {
       const candidates = JSON.parse(candidatesStr);
       const currentIdx = parseInt(img.getAttribute('data-index') || '0', 10);
-
       if (currentIdx < candidates.length - 1) {
         const nextIdx = currentIdx + 1;
         img.setAttribute('data-index', nextIdx.toString());
@@ -183,9 +170,7 @@ export default function App() {
           parent.appendChild(textDiv);
         }
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const getMapImagePath = (buttonName: string): string | null => {
@@ -208,10 +193,8 @@ export default function App() {
     if (rawLocation.includes('清和書林') || rawLocation.includes('清話書林') || rawLocation.includes('ハンドボールコートB')) return 'その他';
     if (rawLocation.includes('屋台') || rawLocation.includes('ハンドボールコート')) return '屋台';
     if (rawLocation.includes('アリーナ') || rawLocation.includes('打越アリーナ')) return '打越アリーナ';
-
     if (rawLocation.includes('中学棟 1階') || rawLocation.includes('高校棟 1階') || (rawLocation.includes('1階') && (rawLocation.includes('中学') || rawLocation.includes('高校')))) return '中学・高校棟 1階';
     if (rawLocation.includes('中学棟 2階') || rawLocation.includes('高校棟 2階') || (rawLocation.includes('2階') && (rawLocation.includes('中学') || rawLocation.includes('高校')))) return '中学・高校棟 2階';
-
     if (rawLocation.includes('中学棟')) {
       if (rawLocation.includes('3階')) return '中学棟 3階';
       if (rawLocation.includes('4階')) return '中学棟 4階';
@@ -251,39 +234,27 @@ export default function App() {
       if (coordsRes) {
         const coordsText = await coordsRes.text();
         const coordsRows = parseCSV(coordsText).slice(1);
-        const parsedCoords: Coordinate[] = coordsRows
-          .filter(row => row && row[0] && row[1])
-          .map(row => ({
-            groupName: row[0],
-            location: getUnifiedLocationGroup(row[1]),
-            x: parseFloat(row[2]) || 50,
-            y: parseFloat(row[3]) || 50
-          }));
+        const parsedCoords: Coordinate[] = coordsRows.filter(row => row && row[0] && row[1]).map(row => ({
+          groupName: row[0], location: getUnifiedLocationGroup(row[1]), x: parseFloat(row[2]) || 50, y: parseFloat(row[3]) || 50
+        }));
         setCoords(parsedCoords);
       }
 
       const groupsRows = parseCSV(groupsText).slice(1);
       const updatesRows = parseCSV(updatesText).slice(1);
-
       const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};
+      
       updatesRows.forEach(row => {
         if (!row || row.length < 2) return;
         const timestamp = row[0], name = row[1], waiting = row[2], comment = row[3];
         if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };
       });
 
-      let mergedGroups: Group[] = groupsRows
-        .filter(row => row && row.length > 1 && row[1])
-        .map(row => ({
-          name: row[1],
-          description: row[2] || "紹介文はまだありません。",
-          location: row[3] || "校内",
-          logo: row[4] || "",
-          status: latestUpdates[row[1]] ? "更新済" : "未更新",
-          waitingTime: latestUpdates[row[1]] ? latestUpdates[row[1]].waiting : "ー",
-          comment: latestUpdates[row[1]] ? latestUpdates[row[1]].comment : "",
-          lastUpdated: latestUpdates[row[1]] ? latestUpdates[row[1]].time : ""
-        }));
+      let mergedGroups: Group[] = groupsRows.filter(row => row && row.length > 1 && row[1]).map(row => ({
+        name: row[1], description: row[2] || "紹介文はまだありません。", location: row[3] || "校内", logo: row[4] || "",
+        status: latestUpdates[row[1]] ? "更新済" : "未更新", waitingTime: latestUpdates[row[1]] ? latestUpdates[row[1]].waiting : "ー",
+        comment: latestUpdates[row[1]] ? latestUpdates[row[1]].comment : "", lastUpdated: latestUpdates[row[1]] ? latestUpdates[row[1]].time : ""
+      }));
 
       const hasBio = mergedGroups.some(g => g.name.includes("生物"));
       const hasLibrary = mergedGroups.some(g => g.name.includes("図書"));
@@ -291,28 +262,18 @@ export default function App() {
       if (!hasBio) {
         const bioUpdates = Object.keys(latestUpdates).find(k => k.includes("生物"));
         mergedGroups.push({
-          name: "生物部",
-          description: "生物部です！様々な展示を行っています。ぜひお越しください！",
-          location: "生物特別教室",
-          logo: "肩 生物部ロゴ.png",
-          status: bioUpdates ? "更新済" : "未更新",
-          waitingTime: bioUpdates ? latestUpdates[bioUpdates].waiting : "ー",
-          comment: bioUpdates ? latestUpdates[bioUpdates].comment : "",
-          lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : ""
+          name: "生物部", description: "生物部です！様々な展示を行っています。ぜひお越しください！", location: "生物特別教室", logo: "肩 生物部ロゴ.png",
+          status: bioUpdates ? "更新済" : "未更新", waitingTime: bioUpdates ? latestUpdates[bioUpdates].waiting : "ー",
+          comment: bioUpdates ? latestUpdates[bioUpdates].comment : "", lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : ""
         });
       }
 
       if (!hasLibrary) {
         const libUpdates = Object.keys(latestUpdates).find(k => k.includes("図書"));
         mergedGroups.push({
-          name: "図書研究部",
-          description: "図書研究部（図書委員会古本バザー）です。面白い本がたくさんあります！",
-          location: "本校舎教室",
-          logo: "図書研究部 ロゴ.png",
-          status: libUpdates ? "更新済" : "未更新",
-          waitingTime: libUpdates ? latestUpdates[libUpdates].waiting : "ー",
-          comment: libUpdates ? latestUpdates[libUpdates].comment : "",
-          lastUpdated: libUpdates ? latestUpdates[libUpdates].time : ""
+          name: "図書研究部", description: "図書研究部（図書委員会古本バザー）です。面白い本がたくさんあります！", location: "本校舎教室", logo: "図書研究部 ロゴ.png",
+          status: libUpdates ? "更新済" : "未更新", waitingTime: libUpdates ? latestUpdates[libUpdates].waiting : "ー",
+          comment: libUpdates ? latestUpdates[libUpdates].comment : "", lastUpdated: libUpdates ? latestUpdates[libUpdates].time : ""
         });
       }
 
@@ -330,27 +291,22 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const filteredGroups = groups
-    .filter(group => {
-      const matchesSearch = group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            group.description.toLowerCase().includes(searchTerm.toLowerCase());
-      if (!matchesSearch) return false;
-      if (filterLocation === 'すべて') return true;
-
-      const rawLocation = group.location || "";
-      if (rawLocation.includes('生徒ホール') || rawLocation.includes('せいとほーる')) {
-        return filterLocation === '中学・高校棟 1階' || filterLocation === 'その他';
-      }
-
-      const unified = getUnifiedLocationGroup(rawLocation);
-      if (filterLocation === 'その他' && unified === 'other_fallback') return true;
-      return unified === filterLocation;
-    })
-    .sort((a, b) => {
-      const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
-      const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
-      return valA - valB; 
-    });
+  const filteredGroups = groups.filter(group => {
+    const matchesSearch = group.name.toLowerCase().includes(searchTerm.toLowerCase()) || group.description.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (filterLocation === 'すべて') return true;
+    const rawLocation = group.location || "";
+    if (rawLocation.includes('生徒ホール') || rawLocation.includes('せいとほーる')) {
+      return filterLocation === '中学・高校棟 1階' || filterLocation === 'その他';
+    }
+    const unified = getUnifiedLocationGroup(rawLocation);
+    if (filterLocation === 'その他' && unified === 'other_fallback') return true;
+    return unified === filterLocation;
+  }).sort((a, b) => {
+    const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
+    const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
+    return valA - valB; 
+  });
 
   const presetLocations = [
     'すべて', '中学・高校棟 1階', '中学・高校棟 2階', '中学棟 3階', '中学棟 4階', '中学棟 5階', '高校棟 3階', '高校棟 4階', '高校棟 5階', '打越アリーナ', '屋台', 'その他'
@@ -359,7 +315,6 @@ export default function App() {
   const currentMapPath = getMapImagePath(filterLocation);
   const activePins = coords.filter(pin => pin.location === filterLocation);
 
-  // 🔥 待ち時間からピンの色を判定する関数
   const getPinTheme = (time: string) => {
     if (time === "ー" || !time) return { bg: "bg-blue-500", text: "text-blue-500" };
     const t = parseFloat(time);
@@ -369,7 +324,25 @@ export default function App() {
     return { bg: "bg-red-600", text: "text-red-600" };
   };
 
-  const selectedGroupInfo = groups.find(g => g.name === selectedGroupName);
+  // 🔥 アイコン（ピンまたはリスト）を押した時の処理
+  const handleItemClick = (groupName: string) => {
+    if (filterLocation === 'すべて') {
+      // 「すべて」の時は中央にモーダルを出す
+      setModalGroupName(groupName);
+    } else {
+      // 「場所」指定の時は、カードを開いて自動スクロール
+      setHighlightedGroupName(groupName);
+      setTimeout(() => {
+        const el = document.getElementById(`card-${groupName}`);
+        if (el) {
+          // ヘッダーに被らないように中央にスクロール
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    }
+  };
+
+  const selectedGroupInfo = groups.find(g => g.name === modalGroupName);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans pb-12">
@@ -405,42 +378,41 @@ export default function App() {
           </div>
         </div>
 
-        {/* 🔥 マップ表示エリア (スマホのズレ完全修正版) */}
+        {/* 🔥 マップ表示エリア（ズレ完全修正版） */}
         {currentMapPath && (
-          <div ref={mapRef} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 scroll-mt-24">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
             <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
             
-            {/* 画像と外枠を完全に一致させ、見えない隙間をゼロにする */}
-            <div className="relative w-full max-w-3xl mx-auto bg-slate-100 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center">
-              {/* object-containを消し、h-auto blockにすることで画像ぴったりサイズになる */}
-              <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
-              
-              {activePins.map((pin, i) => {
-                const groupInfo = groups.find(g => g.name === pin.groupName);
-                const theme = getPinTheme(groupInfo?.waitingTime || "ー");
+            <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+              {/* text-[0] と leading-none で画像の下の謎の余白を完全に消し去る */}
+              <div className="relative w-full leading-none text-[0]">
+                <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
                 
-                return (
-                  <div 
-                    key={i} 
-                    onClick={() => setSelectedGroupName(pin.groupName)} 
-                    className="absolute cursor-pointer group transform -translate-x-1/2 -translate-y-full hover:z-30 transition-all hover:scale-110" 
-                    style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
-                  >
-                    {/* カスタムデザインのピン（色が変わる） */}
-                    <div className="flex flex-col items-center">
-                      <div className={`px-1.5 py-0.5 bg-white/95 rounded shadow-sm text-[9px] font-bold text-slate-800 whitespace-nowrap mb-1 border border-slate-100`}>
-                        {pin.groupName}
+                {activePins.map((pin, i) => {
+                  const groupInfo = groups.find(g => g.name === pin.groupName);
+                  const theme = getPinTheme(groupInfo?.waitingTime || "ー");
+                  const isTarget = highlightedGroupName === pin.groupName;
+                  
+                  return (
+                    <div 
+                      key={i} 
+                      onClick={() => handleItemClick(pin.groupName)} 
+                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-full hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
+                      style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+                    >
+                      <div className="flex flex-col items-center">
+                        <div className={`px-1.5 py-0.5 bg-white/95 rounded shadow-sm text-[9px] font-bold whitespace-nowrap mb-1 border ${isTarget ? 'border-blue-500 text-blue-600 ring-2 ring-blue-200' : 'border-slate-100 text-slate-800'}`}>
+                          {pin.groupName}
+                        </div>
+                        <div className={`w-6 h-6 rounded-full shadow-md flex items-center justify-center text-white ${theme.bg} ring-2 ring-white`}>
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        </div>
+                        <div className={`w-0 h-0 border-l-[5px] border-r-[5px] border-t-[7px] border-l-transparent border-r-transparent border-t-current ${theme.text} mx-auto -mt-[1px]`}></div>
                       </div>
-                      {/* ピンの丸い部分 */}
-                      <div className={`w-6 h-6 rounded-full shadow-md flex items-center justify-center text-white ${theme.bg} ring-2 ring-white`}>
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      </div>
-                      {/* ピンの尖った部分（CSSの三角形） */}
-                      <div className={`w-0 h-0 border-l-[5px] border-r-[5px] border-t-[7px] border-l-transparent border-r-transparent border-t-current ${theme.text} mx-auto -mt-[1px]`}></div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -451,8 +423,16 @@ export default function App() {
             const candidates = getLogoSrcCandidates(group.logo, group.name);
             const candidatesJson = JSON.stringify(candidates);
             
+            // このカードが選択されているかどうか
+            const isHighlighted = highlightedGroupName === group.name;
+            
             return (
-              <div key={idx} onClick={() => setSelectedGroupName(group.name)} className="bg-white rounded-xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer">
+              <div 
+                key={idx} 
+                id={`card-${group.name}`}
+                onClick={() => handleItemClick(group.name)} 
+                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-200 scale-[1.02]' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
+              >
                 <div>
                   <div className="flex items-start gap-3">
                     <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
@@ -468,14 +448,21 @@ export default function App() {
                       <p className="text-xs font-semibold text-blue-600 mt-1">📍 {group.location}</p>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500 mt-3 line-clamp-2 leading-relaxed">{group.description}</p>
+                  {/* 🔥 ハイライトされている時は全文表示、そうでない時は2行で省略 */}
+                  <p className={`text-xs text-slate-500 mt-3 leading-relaxed transition-all ${isHighlighted ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+                    {group.description}
+                  </p>
                 </div>
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">混雑度/待ち時間</span>
                     <span className="text-sm font-bold text-slate-700">{group.waitingTime !== "ー" ? <span className="text-orange-600">🔥 レベル {group.waitingTime}</span> : <span className="text-slate-400">ー</span>}</span>
                   </div>
-                  {group.comment && ( <div className="text-right max-w-[60%] bg-slate-50 px-2 py-1 rounded-lg border border-slate-100"><span className="text-[11px] text-slate-600 truncate block font-medium">"{group.comment}"</span></div> )}
+                  {group.comment && ( 
+                    <div className="text-right max-w-[60%] bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                      <span className={`text-[11px] text-slate-600 block font-medium ${isHighlighted ? '' : 'truncate'}`}>"{group.comment}"</span>
+                    </div> 
+                  )}
                 </div>
               </div>
             );
@@ -484,11 +471,11 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
-      {/* 🔥 中央に大きく表示される「詳細モーダル」 */}
+      {/* 🔥 中央モーダル（「すべて」の時専用） */}
       {selectedGroupInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedGroupName(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setSelectedGroupName(null)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 hover:text-slate-800 z-10 font-bold transition">✕</button>
+            <button onClick={() => setModalGroupName(null)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 hover:text-slate-800 z-10 font-bold transition">✕</button>
             
             <div className="p-6 overflow-y-auto">
               <div className="w-24 h-24 mx-auto bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden mb-4 relative shadow-sm">
@@ -525,7 +512,7 @@ export default function App() {
             </div>
             
             <div className="p-4 border-t border-slate-100 bg-slate-50">
-              <button onClick={() => setSelectedGroupName(null)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm transition active:scale-[0.98]">
+              <button onClick={() => setModalGroupName(null)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm transition active:scale-[0.98]">
                 閉じる
               </button>
             </div>
