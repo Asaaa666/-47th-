@@ -97,11 +97,14 @@ export default function App() {
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
-  // 🔥 マップへのスクロール用のRef
+  // 🔥 開発用：クリックした座標を保存するステート
+  const [clickedCoords, setClickedCoords] = useState<{x: string, y: string} | null>(null);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setHighlightedGroupName(null);
+    setClickedCoords(null); // 場所を切り替えたら座標リセット
   }, [filterLocation, searchTerm]);
 
   useEffect(() => {
@@ -325,26 +328,35 @@ export default function App() {
     return { bg: "bg-red-600", text: "text-red-600" };
   };
 
-  // 🔥 押した場所（マップorリスト）に応じてスクロール方向を変える
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
     if (filterLocation === 'すべて') {
       setModalGroupName(groupName);
     } else {
       setHighlightedGroupName(groupName);
-      
       setTimeout(() => {
         if (source === 'map') {
-          // マップを押した → 下のリストカードへスクロール
           const el = document.getElementById(`card-${groupName}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else if (source === 'list') {
-          // リストを押した → 上のマップへスクロール
           if (mapContainerRef.current) {
             mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
         }
       }, 50);
     }
+  };
+
+  // 🔥 マップ画像をクリックした時に座標を計算する関数
+  const handleMapClickForCoords = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xPos = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPos = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    // 小数点第2位までに丸めて保存
+    setClickedCoords({
+      x: xPos.toFixed(2),
+      y: yPos.toFixed(2)
+    });
   };
 
   const selectedGroupInfo = groups.find(g => g.name === modalGroupName);
@@ -383,14 +395,27 @@ export default function App() {
           </div>
         </div>
 
-        {/* 🔥 マップ表示エリア（ズレ防止の厳格なコンテナ指定） */}
         {currentMapPath && (
           <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 scroll-mt-24">
-            <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
+              
+              {/* 🔥 座標表示パネル（クリックした時だけ表示） */}
+              {clickedCoords && (
+                <div className="bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-800 flex items-center gap-3 shadow-sm animate-in fade-in">
+                  <span>📍 座標測定:</span>
+                  <span className="select-all bg-white px-1.5 py-0.5 rounded border border-blue-100">X: {clickedCoords.x}</span>
+                  <span className="select-all bg-white px-1.5 py-0.5 rounded border border-blue-100">Y: {clickedCoords.y}</span>
+                </div>
+              )}
+            </div>
             
             <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative">
-              {/* text-[0] と leading-none で画像の下の謎の余白を完全に消し去る */}
-              <div className="relative inline-block w-full leading-none text-[0]">
+              {/* 🔥 onClickを追加。カーソルを十字架にしてクリックしやすく */}
+              <div 
+                className="relative inline-block w-full leading-none text-[0] cursor-crosshair" 
+                onClick={handleMapClickForCoords}
+              >
                 <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
                 
                 {activePins.map((pin, i) => {
@@ -401,8 +426,10 @@ export default function App() {
                   return (
                     <div 
                       key={i} 
-                      onClick={() => handleItemClick(pin.groupName, 'map')} 
-                      // 💡 translate-y-1/2 に変更して、ピンの「中心」が座標になるように修正
+                      onClick={(e) => {
+                        e.stopPropagation(); // ピンをクリックした時は座標測定を動かさない
+                        handleItemClick(pin.groupName, 'map');
+                      }} 
                       className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
                       style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                     >
@@ -418,12 +445,23 @@ export default function App() {
                     </div>
                   );
                 })}
+
+                {/* 🔥 クリックした場所に一時的な「＋」マークを表示 */}
+                {clickedCoords && (
+                  <div 
+                    className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50"
+                    style={{ left: `${clickedCoords.x}%`, top: `${clickedCoords.y}%` }}
+                  >
+                    <div className="w-full h-0.5 bg-red-500 absolute top-1/2 -translate-y-1/2 shadow-sm"></div>
+                    <div className="h-full w-0.5 bg-red-500 absolute left-1/2 -translate-x-1/2 shadow-sm"></div>
+                  </div>
+                )}
               </div>
             </div>
+            <p className="text-[10px] text-slate-400 text-center mt-1">※ マップ上の何もない場所をクリックすると、その位置の X / Y 座標（％）を取得できます。</p>
           </div>
         )}
 
-        {/* 団体リスト */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredGroups.map((group, idx) => {
             const candidates = getLogoSrcCandidates(group.logo, group.name);
@@ -452,7 +490,6 @@ export default function App() {
                       <p className="text-xs font-semibold text-blue-600 mt-1">📍 {group.location}</p>
                     </div>
                   </div>
-                  {/* 🔥 ハイライトされている時は全文表示、そうでない時は2行で省略 */}
                   <p className={`text-xs text-slate-500 mt-3 leading-relaxed transition-all ${isHighlighted ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
                     {group.description}
                   </p>
@@ -475,7 +512,6 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
-      {/* 🔥 中央モーダル（「すべて」の時専用） */}
       {selectedGroupInfo && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
