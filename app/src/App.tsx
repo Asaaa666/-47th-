@@ -1,73 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-// あなたのスプレッドシートID
 const SPREADSHEET_ID = "1W4vJaSM0jlOQcjE-TstUby6v0K1bJeSY3GnSH8BDKhA"; 
-
-const EXACT_FILE_MAP: Record<string, string[]> = {
-  "化学部": ["化学部_ロゴ.png"],
-  "物理部": ["物理部展#2026 ロゴ.png"],
-  "物理部展#2026": ["物理部展#2026 ロゴ.png"],
-  "Asano Debating Union": ["Asano Debating Union_ロゴ(教室,講堂企画合同).png"],
-  "ADU": ["Asano Debating Union_ロゴ(教室,講堂企画合同).png"],
-  "ポテトヘッド": ["ポテトヘッド ロゴ.png"],
-  "神兵衛": ["神兵衛_ロゴ .png"], 
-  "鶏ッピー": ["鶏ッピー ロゴ.jpg"], 
-  "浅野特撮研究会": ["ASET 浅野学園特撮研究会_ロゴ.png のコピー.png"], 
-  "ASET": ["ASET 浅野学園特撮研究会_ロゴ.png のコピー.png"],
-  "生徒会チャリティー": ["浅野学園生徒会_ロゴ.png"],
-  "生徒会": ["浅野学園生徒会_ロゴ.png"],
-  "歴史研究部": ["歴史研究部_ロゴ.png"],
-  "鉃道研究部": ["鉃道研究部_ロゴ.png"],
-  "鉄道研究部": ["鉃道研究部_ロゴ.png"],
-  "浅野学園吹奏楽部": ["浅野学園吹奏楽部_ロゴ.jpg"],
-  "吹奏楽部": ["浅野学園吹奏楽部_ロゴ.jpg"],
-  "ARCHERz": ["ARCHERz_ロゴ.jpg"],
-  "美術部展": ["美術部展＿ロゴ.png"], 
-  "ホラー展": ["ホラー展_ロゴ.png"],
-  "Melon Frappe Jazz Orchestra": ["Melon Frappe Jazz Orchestra_ロゴ.png"],
-  "数学同好会": ["数学同好会_ロゴ.png"],
-  "びりやーど研究会": ["びりやーど研究会_ロゴ.png"],
-  "中学野球部": ["中学野球部_ロゴ.jpeg"], 
-  "折り紙研究会": ["折り紙研究会_ロゴ.png"],
-  "喰いコミュニケーションXXIV": ["喰いコミュニケーションXXIV_ロゴ.jpg"],
-  "喰いコミュニケーション": ["喰いコミュニケーションXXIV_ロゴ.jpg"],
-  "団GO": ["団GO!_ロゴ.png"],
-  "団GO！": ["団GO!_ロゴ.png"],
-  "図書研究部": ["図書研究部 ロゴ.png", "図書委員会古本バザー _ロゴ.png"],
-  "生物部": ["肩 生物部ロゴ.png"], 
-  "地学部プラネタリウム": ["地学部プラネタリウム_ロゴ.png"],
-  "地学部展示": ["地学部展示_ロゴ.png"],
-  "Cooland": ["Cooland_ロゴ.png"],
-  "American Cafe BEN&KEN": ["AMERICAN CAFE BEN&KEN_ロゴ.png"],
-  "AMERICAN CAFE BEN & KEN": ["AMERICAN CAFE BEN&KEN_ロゴ.png"],
-  "焼きすぎて麺": ["焼きすぎて麺！_ロゴ.png"],
-  "焼きすぎて麺！": ["焼きすぎて麺！_ロゴ.png"],
-  "Zepp Asano": ["Zepp Asano_ロゴ.png"],
-  "りすのおうち": ["りすのおうち_ロゴ.png"],
-  "アサノ大全": ["アサノ大全.PNG"], 
-  "地学部ロケット実演": ["地学部ロケット実演_ロゴ.png"],
-  "あまねくダンク": ["あまねくダンク_ロゴ.png"],
-  "クイズ研究部": ["クイズ研究部.png"],
-  "的に当てろ屋": ["的に当てろ屋_ロゴ.jpg"],
-  "書道部展示": ["書道部_ロゴ.png"],
-  "書道部": ["書道部_ロゴ.png"],
-  "棋道部": ["棋道部＿ロゴ.png"],
-  "登山部": ["登山部 ＿ロゴ.png"],
-  "演劇部": ["演劇部_ロゴ.png"],
-  "図書委員会古本バザー": ["図書委員会古本バザー _ロゴ.png"],
-  "Juggling Art Asano": ["Juggling Art Asano_ロゴ(アリーナ、講堂共通) .png_"], 
-  "KCC": ["KCC_ロゴ.png"],
-  "KCC Lounge": ["KCC_ロゴ.png"],
-  "中１学年参加": ["中１学年参加_ロゴ.png"],
-  "中1学年参加": ["中１学年参加_ロゴ.png"],
-  "スクラム食堂": ["スクラム食堂.png"],
-  "おばけ屋敷": ["おばけ屋敷_ロゴ.jpeg"],
-   "レーザータグ": ["レーザータグ_ロゴ.png"],
-   "CHANCE and PLANTS": ["中２学年参加_ロゴ.png"],
-   "装飾部門": ["装飾部門_ロゴ.png"],
-   "浅野同窓会": ["浅野同窓会_ロゴ.png"],
-   "涼水": ["涼水_ロゴ.png"] ,
-    };
 
 interface Group {
   name: string;
@@ -101,14 +34,10 @@ export default function App() {
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
-  // 🔥 開発用：クリックした座標を保存するステート
-  const [clickedCoords, setClickedCoords] = useState<{x: string, y: string} | null>(null);
-
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setHighlightedGroupName(null);
-    setClickedCoords(null); // 場所を切り替えたら座標リセット
   }, [filterLocation, searchTerm]);
 
   useEffect(() => {
@@ -125,26 +54,13 @@ export default function App() {
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
     const filenames: string[] = [];
     const name = groupName.trim();
-    const normalizeKey = (str: string) => str.toLowerCase().replace(/\s+/g, '').replace(/[！!！＿_#＃＆&()（）]/g, '').replace(/鉄/g, '鉃');
-    const normName = normalizeKey(name);
 
-    if (originalLogo) filenames.push(originalLogo.trim());
-    if (name.includes("生物")) filenames.push("肩 生物部ロゴ.png");
-    if (name.includes("図書")) { filenames.push("図書研究部 ロゴ.png"); filenames.push("図書委員会古本バザー _ロゴ.png"); }
-
-    if (EXACT_FILE_MAP[name]) {
-      filenames.push(...EXACT_FILE_MAP[name]);
-    } else {
-      Object.keys(EXACT_FILE_MAP).forEach(key => {
-        const normKey = normalizeKey(key);
-        if (normName.includes(normKey) || normKey.includes(normName) || name.includes(key) || key.includes(name)) {
-          filenames.push(...EXACT_FILE_MAP[key]);
-        }
-      });
+    if (originalLogo) {
+      filenames.push(originalLogo.trim());
     }
 
     const clean = name.replace(/\s+/g, '');
-    filenames.push(`${name}_ロゴ.png`, `${name} ロゴ.png`, `${name}.png`, `${clean}_ロゴ.png`);
+    filenames.push(`${name}_ロゴ.png`, `${name} ロゴ.png`, `${name}.png`, `${clean}_ロゴ.png`, `${name}_ロゴ.jpg`, `${name}.jpeg`);
 
     const urls: string[] = [];
     filenames.forEach(fn => {
@@ -350,19 +266,6 @@ export default function App() {
     }
   };
 
-  // 🔥 マップ画像をクリックした時に座標を計算する関数
-  const handleMapClickForCoords = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const xPos = ((e.clientX - rect.left) / rect.width) * 100;
-    const yPos = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    // 小数点第2位までに丸めて保存
-    setClickedCoords({
-      x: xPos.toFixed(2),
-      y: yPos.toFixed(2)
-    });
-  };
-
   const selectedGroupInfo = groups.find(g => g.name === modalGroupName);
 
   return (
@@ -401,25 +304,10 @@ export default function App() {
 
         {currentMapPath && (
           <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 scroll-mt-24">
-            <div className="flex justify-between items-center">
-              <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
-              
-              {/* 🔥 座標表示パネル（クリックした時だけ表示） */}
-              {clickedCoords && (
-                <div className="bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-800 flex items-center gap-3 shadow-sm animate-in fade-in">
-                  <span>📍 座標測定:</span>
-                  <span className="select-all bg-white px-1.5 py-0.5 rounded border border-blue-100">X: {clickedCoords.x}</span>
-                  <span className="select-all bg-white px-1.5 py-0.5 rounded border border-blue-100">Y: {clickedCoords.y}</span>
-                </div>
-              )}
-            </div>
+            <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
             
             <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative">
-              {/* 🔥 onClickを追加。カーソルを十字架にしてクリックしやすく */}
-              <div 
-                className="relative inline-block w-full leading-none text-[0] cursor-crosshair" 
-                onClick={handleMapClickForCoords}
-              >
+              <div className="relative inline-block w-full leading-none text-[0]">
                 <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
                 
                 {activePins.map((pin, i) => {
@@ -431,7 +319,7 @@ export default function App() {
                     <div 
                       key={i} 
                       onClick={(e) => {
-                        e.stopPropagation(); // ピンをクリックした時は座標測定を動かさない
+                        e.stopPropagation();
                         handleItemClick(pin.groupName, 'map');
                       }} 
                       className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
@@ -449,20 +337,8 @@ export default function App() {
                     </div>
                   );
                 })}
-
-                {/* 🔥 クリックした場所に一時的な「＋」マークを表示 */}
-                {clickedCoords && (
-                  <div 
-                    className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50"
-                    style={{ left: `${clickedCoords.x}%`, top: `${clickedCoords.y}%` }}
-                  >
-                    <div className="w-full h-0.5 bg-red-500 absolute top-1/2 -translate-y-1/2 shadow-sm"></div>
-                    <div className="h-full w-0.5 bg-red-500 absolute left-1/2 -translate-x-1/2 shadow-sm"></div>
-                  </div>
-                )}
               </div>
             </div>
-            <p className="text-[10px] text-slate-400 text-center mt-1">※ マップ上の何もない場所をクリックすると、その位置の X / Y 座標（％）を取得できます。</p>
           </div>
         )}
 
