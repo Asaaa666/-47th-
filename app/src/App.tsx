@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzVseby8ohKRX_OXRs3K_Ph1fthARP0Klko1-22FCfpGtlm5F1Wi0zRLlfd4g6B45n2aA/exec"; 
-
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec"
 interface Group {
   name: string;
   description: string;
