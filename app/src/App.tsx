@@ -11,6 +11,7 @@ interface Group {
   waitingTime: string;
   comment: string;
   lastUpdated: string;
+  category: string;
 }
 
 interface Coordinate {
@@ -18,6 +19,7 @@ interface Coordinate {
   location: string;
   x: number;
   y: number;
+  category?: string;
 }
 
 export default function App() {
@@ -30,6 +32,9 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('location') || 'すべて';
   });
+
+  const [filterCategory, setFilterCategory] = useState<string>('すべて');
+  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
   
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
@@ -38,7 +43,7 @@ export default function App() {
 
   useEffect(() => {
     setHighlightedGroupName(null);
-  }, [filterLocation, searchTerm]);
+  }, [filterLocation, filterCategory, searchTerm, sortBy]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -89,7 +94,7 @@ export default function App() {
         const parent = img.parentElement;
         if (parent && !parent.querySelector('.fallback-text')) {
           const textDiv = document.createElement('div');
-          textDiv.className = 'fallback-text text-xl font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
+          textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
           textDiv.innerText = '祭';
           parent.appendChild(textDiv);
         }
@@ -155,12 +160,25 @@ export default function App() {
       const groupsText = await groupsRes.text();
       const updatesText = await updatesRes.text();
 
+      const coordsCategoryMap: Record<string, string> = {};
+
       if (coordsRes) {
         const coordsText = await coordsRes.text();
         const coordsRows = parseCSV(coordsText).slice(1);
-        const parsedCoords: Coordinate[] = coordsRows.filter(row => row && row[0] && row[1]).map(row => ({
-          groupName: row[0], location: getUnifiedLocationGroup(row[1]), x: parseFloat(row[2]) || 50, y: parseFloat(row[3]) || 50
-        }));
+        const parsedCoords: Coordinate[] = coordsRows.filter(row => row && row[0] && row[1]).map(row => {
+          const groupName = row[0].trim();
+          const category = row[5] ? row[5].trim() : (row[4] ? row[4].trim() : ""); // F列 (index 5) から部門を取得
+          if (groupName && category) {
+            coordsCategoryMap[groupName] = category;
+          }
+          return {
+            groupName: groupName,
+            location: getUnifiedLocationGroup(row[1]),
+            x: parseFloat(row[2]) || 50,
+            y: parseFloat(row[3]) || 50,
+            category: category
+          };
+        });
         setCoords(parsedCoords);
       }
 
@@ -174,11 +192,21 @@ export default function App() {
         if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };
       });
 
-      let mergedGroups: Group[] = groupsRows.filter(row => row && row.length > 1 && row[1]).map(row => ({
-        name: row[1], description: row[2] || "紹介文はまだありません。", location: row[3] || "校内", logo: row[4] || "",
-        status: latestUpdates[row[1]] ? "更新済" : "未更新", waitingTime: latestUpdates[row[1]] ? latestUpdates[row[1]].waiting : "ー",
-        comment: latestUpdates[row[1]] ? latestUpdates[row[1]].comment : "", lastUpdated: latestUpdates[row[1]] ? latestUpdates[row[1]].time : ""
-      }));
+      let mergedGroups: Group[] = groupsRows.filter(row => row && row.length > 1 && row[1]).map(row => {
+        const name = row[1].trim();
+        const category = coordsCategoryMap[name] || (row[5] ? row[5].trim() : "その他");
+        return {
+          name: name,
+          description: row[2] || "紹介文はまだありません。",
+          location: row[3] || "校内",
+          logo: row[4] || "",
+          status: latestUpdates[name] ? "更新済" : "未更新",
+          waitingTime: latestUpdates[name] ? latestUpdates[name].waiting : "ー",
+          comment: latestUpdates[name] ? latestUpdates[name].comment : "",
+          lastUpdated: latestUpdates[name] ? latestUpdates[name].time : "",
+          category: category || "その他"
+        };
+      });
 
       const hasBio = mergedGroups.some(g => g.name.includes("生物"));
       const hasLibrary = mergedGroups.some(g => g.name.includes("図書"));
@@ -188,7 +216,8 @@ export default function App() {
         mergedGroups.push({
           name: "生物部", description: "生物部です！様々な展示を行っています。ぜひお越しください！", location: "生物特別教室", logo: "肩 生物部ロゴ.png",
           status: bioUpdates ? "更新済" : "未更新", waitingTime: bioUpdates ? latestUpdates[bioUpdates].waiting : "ー",
-          comment: bioUpdates ? latestUpdates[bioUpdates].comment : "", lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : ""
+          comment: bioUpdates ? latestUpdates[bioUpdates].comment : "", lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : "",
+          category: coordsCategoryMap["生物部"] || "展示"
         });
       }
 
@@ -197,7 +226,8 @@ export default function App() {
         mergedGroups.push({
           name: "図書研究部", description: "図書研究部（図書委員会古本バザー）です。面白い本がたくさんあります！", location: "本校舎教室", logo: "図書研究部 ロゴ.png",
           status: libUpdates ? "更新済" : "未更新", waitingTime: libUpdates ? latestUpdates[libUpdates].waiting : "ー",
-          comment: libUpdates ? latestUpdates[libUpdates].comment : "", lastUpdated: libUpdates ? latestUpdates[libUpdates].time : ""
+          comment: libUpdates ? latestUpdates[libUpdates].comment : "", lastUpdated: libUpdates ? latestUpdates[libUpdates].time : "",
+          category: coordsCategoryMap["図書研究部"] || "展示"
         });
       }
 
@@ -215,21 +245,55 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // 取得したデータから部門リストを動的に作成
+  const uniqueCategories = Array.from(new Set(groups.map(g => g.category).filter(Boolean)));
+  const categoryOptions = ['すべて', ...uniqueCategories];
+
   const filteredGroups = groups.filter(group => {
-    const matchesSearch = group.name.toLowerCase().includes(searchTerm.toLowerCase()) || group.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = group.name.toLowerCase().includes(searchLower) || 
+                          group.description.toLowerCase().includes(searchLower) ||
+                          group.category.toLowerCase().includes(searchLower) ||
+                          group.location.toLowerCase().includes(searchLower);
     if (!matchesSearch) return false;
-    if (filterLocation === 'すべて') return true;
-    const rawLocation = group.location || "";
-    if (rawLocation.includes('生徒ホール') || rawLocation.includes('せいとほーる')) {
-      return filterLocation === '中学・高校棟 1階' || filterLocation === 'その他';
+
+    // 場所フィルター
+    if (filterLocation !== 'すべて') {
+      const rawLocation = group.location || "";
+      if (rawLocation.includes('生徒ホール') || rawLocation.includes('せいとほーる')) {
+        if (filterLocation !== '中学・高校棟 1階' && filterLocation !== 'その他') return false;
+      } else {
+        const unified = getUnifiedLocationGroup(rawLocation);
+        if (filterLocation === 'その他') {
+          if (unified !== 'other_fallback') return false;
+        } else if (unified !== filterLocation) {
+          return false;
+        }
+      }
     }
-    const unified = getUnifiedLocationGroup(rawLocation);
-    if (filterLocation === 'その他' && unified === 'other_fallback') return true;
-    return unified === filterLocation;
+
+    // 部門フィルター
+    if (filterCategory !== 'すべて' && group.category !== filterCategory) {
+      return false;
+    }
+
+    return true;
   }).sort((a, b) => {
-    const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
-    const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
-    return valA - valB; 
+    if (sortBy === 'name') {
+      return a.name.localeCompare(b.name, 'ja');
+    } else if (sortBy === 'category') {
+      const catCompare = a.category.localeCompare(b.category, 'ja');
+      if (catCompare !== 0) return catCompare;
+      const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
+      const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
+      return valA - valB;
+    } else {
+      // 待ち時間順（デフォルト）
+      const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
+      const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
+      if (valA !== valB) return valA - valB;
+      return a.name.localeCompare(b.name, 'ja');
+    }
   });
 
   const presetLocations = [
@@ -240,12 +304,12 @@ export default function App() {
   const activePins = coords.filter(pin => pin.location === filterLocation);
 
   const getPinTheme = (time: string) => {
-    if (time === "ー" || !time) return { bg: "bg-blue-500", text: "text-blue-500" };
+    if (time === "ー" || !time) return { border: "border-blue-500", bg: "bg-blue-500" };
     const t = parseFloat(time);
-    if (isNaN(t)) return { bg: "bg-blue-500", text: "text-blue-500" };
-    if (t <= 15) return { bg: "bg-green-500", text: "text-green-500" };
-    if (t <= 30) return { bg: "bg-orange-500", text: "text-orange-500" };
-    return { bg: "bg-red-600", text: "text-red-600" };
+    if (isNaN(t)) return { border: "border-blue-500", bg: "bg-blue-500" };
+    if (t <= 15) return { border: "border-green-500", bg: "bg-green-500" };
+    if (t <= 30) return { border: "border-orange-500", bg: "bg-orange-500" };
+    return { border: "border-red-600", bg: "bg-red-600" };
   };
 
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
@@ -288,12 +352,42 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-4 mt-6 space-y-6 relative z-10">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <input type="text" placeholder="🔍 団体名やキーワードで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition" />
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
-              <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200">🟢 待ち時間が低い順に表示中</span>
+          {/* 🔍 検索バー */}
+          <input type="text" placeholder="🔍 団体名、部門、キーワードで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition" />
+          
+          {/* 🔄 並び替え（ソート）切替 */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">表示順 (並び替え)</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setSortBy('waiting')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${sortBy === 'waiting' ? 'bg-orange-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                ⚡ 待ち時間順 (低い順)
+              </button>
+              <button onClick={() => setSortBy('name')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${sortBy === 'name' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                🔤 名前順 (五十音)
+              </button>
+              <button onClick={() => setSortBy('category')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${sortBy === 'category' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                🏷️ 部門順
+              </button>
             </div>
+          </div>
+
+          {/* 🏷️ 部門で絞り込み */}
+          {uniqueCategories.length > 0 && (
+            <div className="space-y-1.5 pt-1 border-t border-slate-100">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">部門で絞り込む</span>
+              <div className="flex flex-wrap gap-1.5">
+                {categoryOptions.map((cat, i) => (
+                  <button key={i} onClick={() => setFilterCategory(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {cat === 'すべて' ? 'すべての部門' : cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 📍 エリアで絞り込み */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
             <div className="flex flex-wrap gap-1.5">
               {presetLocations.map((loc, i) => (
                 <button key={i} onClick={() => setFilterLocation(loc)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{loc}</button>
@@ -314,6 +408,8 @@ export default function App() {
                   const groupInfo = groups.find(g => g.name === pin.groupName);
                   const theme = getPinTheme(groupInfo?.waitingTime || "ー");
                   const isTarget = highlightedGroupName === pin.groupName;
+                  const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
+                  const candidatesJson = JSON.stringify(candidates);
                   
                   return (
                     <div 
@@ -322,17 +418,28 @@ export default function App() {
                         e.stopPropagation();
                         handleItemClick(pin.groupName, 'map');
                       }} 
-                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 hover:z-30 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-110'}`} 
+                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-125 z-20 hover:z-30'}`} 
                       style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                     >
-                      <div className="flex flex-col items-center">
-                        <div className={`px-1.5 py-0.5 bg-white/95 rounded shadow-sm text-[9px] font-bold whitespace-nowrap mb-1 border ${isTarget ? 'border-blue-500 text-blue-600 ring-2 ring-blue-200' : 'border-slate-100 text-slate-800'}`}>
+                      <div className="relative flex items-center justify-center">
+                        <div className={`w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border-2 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${isTarget ? 'ring-4 ring-blue-300 border-blue-600' : theme.border}`}>
+                          {candidates.length > 0 ? (
+                            <img 
+                              src={candidates[0]} 
+                              alt={pin.groupName} 
+                              className="w-full h-full object-cover" 
+                              data-candidates={candidatesJson} 
+                              data-index="0" 
+                              onError={handleLogoError} 
+                            />
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-500">{pin.groupName.slice(0, 2)}</span>
+                          )}
+                        </div>
+
+                        <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50' : 'opacity-0 group-hover:opacity-100'}`}>
                           {pin.groupName}
                         </div>
-                        <div className={`w-6 h-6 rounded-full shadow-md flex items-center justify-center text-white ${theme.bg} ring-2 ring-white`}>
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        </div>
-                        <div className={`w-0 h-0 border-l-[5px] border-r-[5px] border-t-[7px] border-l-transparent border-r-transparent border-t-current ${theme.text} mx-auto -mt-[1px]`}></div>
                       </div>
                     </div>
                   );
@@ -367,7 +474,16 @@ export default function App() {
                         <h3 className="font-bold text-base leading-tight truncate">{group.name}</h3>
                         <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${group.status === '更新済' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{group.status}</span>
                       </div>
-                      <p className="text-xs font-semibold text-blue-600 mt-1">📍 {group.location}</p>
+                      
+                      {/* 📍 場所 & 🏷️ 部門バッジ */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-xs font-semibold text-blue-600">📍 {group.location}</span>
+                        {group.category && (
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            🏷️ {group.category}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <p className={`text-xs text-slate-500 mt-3 leading-relaxed transition-all ${isHighlighted ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
@@ -392,6 +508,7 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
+      {/* 詳細モーダル */}
       {selectedGroupInfo && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -408,7 +525,15 @@ export default function App() {
               </div>
               
               <h3 className="text-2xl font-black text-center text-slate-800 mb-1">{selectedGroupInfo.name}</h3>
-              <p className="text-sm font-bold text-blue-600 text-center mb-5">📍 {selectedGroupInfo.location}</p>
+              
+              <div className="flex justify-center items-center gap-2 mb-5">
+                <span className="text-sm font-bold text-blue-600">📍 {selectedGroupInfo.location}</span>
+                {selectedGroupInfo.category && (
+                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                    🏷️ {selectedGroupInfo.category}
+                  </span>
+                )}
+              </div>
               
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-4 flex items-center justify-between shadow-inner">
                  <span className="text-xs font-bold text-slate-500 block">現在の混雑度 / 待ち時間</span>
