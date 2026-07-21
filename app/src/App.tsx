@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
-const SPREADSHEET_ID = "1W4vJaSM0jlOQcjE-TstUby6v0K1bJeSY3GnSH8BDKhA"; 
+// ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzVseby8ohKRX_OXRs3K_Ph1fthARP0Klko1-22FCfpGtlm5F1Wi0zRLlfd4g6B45n2aA/exec"; 
 
 interface Group {
   name: string;
@@ -139,67 +140,55 @@ export default function App() {
     return 'other_fallback'; 
   };
 
-  const parseCSV = (text: string) => {
-    const lines = text.split(/\r?\n/);
-    return lines.map(line => line.split(',').map(cell => {
-      let cleaned = cell.trim();
-      if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
-      return cleaned.replace(/""/g, '"');
-    })).filter(row => row.length > 0 && row.some(cell => cell !== ""));
-  };
-
+  // 🚀 GASキャッシュサーバーから高速データ一括取得
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [groupsRes, updatesRes, coordsRes] = await Promise.all([
-        fetch(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent("団体名")}`),
-        fetch(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent("updates")}`),
-        fetch(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent("coords")}`).catch(() => null)
-      ]);
 
-      const groupsText = await groupsRes.text();
-      const updatesText = await updatesRes.text();
+      const res = await fetch(GAS_API_URL);
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const data = await res.json();
 
       const coordsCategoryMap: Record<string, string> = {};
 
-      if (coordsRes) {
-        const coordsText = await coordsRes.text();
-        const coordsRows = parseCSV(coordsText).slice(1);
-        const parsedCoords: Coordinate[] = coordsRows.filter(row => row && row[0] && row[1]).map(row => {
-          const groupName = row[0].trim();
-          const category = row[5] ? row[5].trim() : (row[4] ? row[4].trim() : ""); // F列 (index 5) から部門を取得
-          if (groupName && category) {
-            coordsCategoryMap[groupName] = category;
-          }
-          return {
-            groupName: groupName,
-            location: getUnifiedLocationGroup(row[1]),
-            x: parseFloat(row[2]) || 50,
-            y: parseFloat(row[3]) || 50,
-            category: category
-          };
-        });
-        setCoords(parsedCoords);
-      }
+      // 1. coords（マップ座標 & 部門データ）
+      const coordsRows = (data.coords || []).slice(1);
+      const parsedCoords: Coordinate[] = coordsRows.filter((row: any[]) => row && row[0] && row[1]).map((row: any[]) => {
+        const groupName = String(row[0]).trim();
+        const category = row[5] ? String(row[5]).trim() : (row[4] ? String(row[4]).trim() : "");
+        if (groupName && category) {
+          coordsCategoryMap[groupName] = category;
+        }
+        return {
+          groupName: groupName,
+          location: getUnifiedLocationGroup(String(row[1])),
+          x: parseFloat(row[2]) || 50,
+          y: parseFloat(row[3]) || 50,
+          category: category
+        };
+      });
+      setCoords(parsedCoords);
 
-      const groupsRows = parseCSV(groupsText).slice(1);
-      const updatesRows = parseCSV(updatesText).slice(1);
+      // 2. updates（リアルタイム混雑度データ）
+      const updatesRows = (data.updates || []).slice(1);
       const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};
       
-      updatesRows.forEach(row => {
+      updatesRows.forEach((row: any[]) => {
         if (!row || row.length < 2) return;
-        const timestamp = row[0], name = row[1], waiting = row[2], comment = row[3];
+        const timestamp = String(row[0]), name = String(row[1]), waiting = String(row[2]), comment = String(row[3]);
         if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };
       });
 
-      let mergedGroups: Group[] = groupsRows.filter(row => row && row.length > 1 && row[1]).map(row => {
-        const name = row[1].trim();
-        const category = coordsCategoryMap[name] || (row[5] ? row[5].trim() : "その他");
+      // 3. groups（団体基本データ）
+      const groupsRows = (data.groups || []).slice(1);
+      let mergedGroups: Group[] = groupsRows.filter((row: any[]) => row && row.length > 1 && row[1]).map((row: any[]) => {
+        const name = String(row[1]).trim();
+        const category = coordsCategoryMap[name] || (row[5] ? String(row[5]).trim() : "その他");
         return {
           name: name,
-          description: row[2] || "紹介文はまだありません。",
-          location: row[3] || "校内",
-          logo: row[4] || "",
+          description: row[2] ? String(row[2]) : "紹介文はまだありません。",
+          location: row[3] ? String(row[3]) : "校内",
+          logo: row[4] ? String(row[4]) : "",
           status: latestUpdates[name] ? "更新済" : "未更新",
           waitingTime: latestUpdates[name] ? latestUpdates[name].waiting : "ー",
           comment: latestUpdates[name] ? latestUpdates[name].comment : "",
@@ -208,6 +197,7 @@ export default function App() {
         };
       });
 
+      // フォールバック追加（生物部 / 図書研究部）
       const hasBio = mergedGroups.some(g => g.name.includes("生物"));
       const hasLibrary = mergedGroups.some(g => g.name.includes("図書"));
 
@@ -245,10 +235,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 取得したデータから部門リストを動的に作成
+  // 部門リスト生成
   const uniqueCategories = Array.from(new Set(groups.map(g => g.category).filter(Boolean)));
   const categoryOptions = ['すべて', ...uniqueCategories];
 
+  // フィルタリング & ソート
   const filteredGroups = groups.filter(group => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = group.name.toLowerCase().includes(searchLower) || 
@@ -257,7 +248,6 @@ export default function App() {
                           group.location.toLowerCase().includes(searchLower);
     if (!matchesSearch) return false;
 
-    // 場所フィルター
     if (filterLocation !== 'すべて') {
       const rawLocation = group.location || "";
       if (rawLocation.includes('生徒ホール') || rawLocation.includes('せいとほーる')) {
@@ -272,7 +262,6 @@ export default function App() {
       }
     }
 
-    // 部門フィルター
     if (filterCategory !== 'すべて' && group.category !== filterCategory) {
       return false;
     }
@@ -288,7 +277,6 @@ export default function App() {
       const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
       return valA - valB;
     } else {
-      // 待ち時間順（デフォルト）
       const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
       const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
       if (valA !== valB) return valA - valB;
@@ -352,10 +340,8 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-4 mt-6 space-y-6 relative z-10">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          {/* 🔍 検索バー */}
           <input type="text" placeholder="🔍 団体名、部門、キーワードで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition" />
           
-          {/* 🔄 並び替え（ソート）切替 */}
           <div className="space-y-1.5 pt-1 border-t border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">表示順 (並び替え)</span>
             <div className="flex flex-wrap gap-1.5">
@@ -371,7 +357,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* 🏷️ 部門で絞り込み */}
           {uniqueCategories.length > 0 && (
             <div className="space-y-1.5 pt-1 border-t border-slate-100">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">部門で絞り込む</span>
@@ -385,7 +370,6 @@ export default function App() {
             </div>
           )}
 
-          {/* 📍 エリアで絞り込み */}
           <div className="space-y-1.5 pt-1 border-t border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
             <div className="flex flex-wrap gap-1.5">
@@ -475,7 +459,6 @@ export default function App() {
                         <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${group.status === '更新済' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{group.status}</span>
                       </div>
                       
-                      {/* 📍 場所 & 🏷️ 部門バッジ */}
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="text-xs font-semibold text-blue-600">📍 {group.location}</span>
                         {group.category && (
@@ -508,7 +491,6 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
-      {/* 詳細モーダル */}
       {selectedGroupInfo && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
