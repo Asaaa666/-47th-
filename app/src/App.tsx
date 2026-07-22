@@ -294,8 +294,8 @@ export default function App() {
     if (time === "ー" || !time) return { border: "border-blue-500", bg: "bg-blue-500" };
     const t = parseFloat(time);
     if (isNaN(t)) return { border: "border-blue-500", bg: "bg-blue-500" };
-    if (t <= 15) return { border: "border-green-500", bg: "bg-green-500" };
-    if (t <= 30) return { border: "border-orange-500", bg: "bg-orange-500" };
+    if (t <= 1) return { border: "border-green-500", bg: "bg-green-500" };
+    if (t <= 3) return { border: "border-orange-500", bg: "bg-orange-500" };
     return { border: "border-red-600", bg: "bg-red-600" };
   };
 
