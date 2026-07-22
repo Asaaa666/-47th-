@@ -105,7 +105,7 @@ export default function App() {
   const getMapImagePath = (buttonName: string): string | null => {
     if (!buttonName || buttonName === 'すべて' || buttonName === 'その他') return null;
     if (buttonName === '屋台') return '/屋台 (1).png';
-    if (buttonName === '打越アリーナ') return '/アリーナ.png';
+    
     if (buttonName === '中学・高校棟 1階') return '/1階 (1).png';
     if (buttonName === '中学・高校棟 2階') return '/2階 (1).png';
     if (buttonName === '中学棟 3階') return '/中学棟3階 (1).png';
@@ -296,6 +296,7 @@ export default function App() {
     if (isNaN(t)) return { border: "border-blue-500", bg: "bg-blue-500" };
     if (t <= 2) return { border: "border-green-500", bg: "bg-green-500" };
     if (t <= 4) return { border: "border-orange-500", bg: "bg-orange-500" };
+    if (t <= 5) return { border: "border-red-500", bg: "bg-red-500" };
     return { border: "border-red-600", bg: "bg-red-600" };
   };
 
@@ -405,7 +406,7 @@ export default function App() {
                       style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                     >
                       <div className="relative flex items-center justify-center">
-                        <div className={`w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border-2 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${isTarget ? 'ring-4 ring-blue-300 border-blue-600' : theme.border}`}>
+                        <div className={`w-8 h-8 md:w-20 md:h-20 rounded-full bg-white border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${isTarget ? 'ring-4 ring-blue-300 border-blue-600' : theme.border}`}>
                           {candidates.length > 0 ? (
                             <img 
                               src={candidates[0]} 
