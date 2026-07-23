@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec"
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";
+
 interface Group {
   name: string;
   description: string;
@@ -35,7 +36,8 @@ export default function App() {
 
   const [filterCategory, setFilterCategory] = useState<string>('すべて');
   const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
-  
+  const [isOpen, setisOpen] = useState(false);
+
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
@@ -357,27 +359,55 @@ export default function App() {
             </div>
           </div>
 
-          {uniqueCategories.length > 0 && (
-            <div className="space-y-1.5 pt-1 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">部門で絞り込む</span>
-              <div className="flex flex-wrap gap-1.5">
-                {categoryOptions.map((cat, i) => (
-                  <button key={i} onClick={() => setFilterCategory(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                    {cat === 'すべて' ? 'すべての部門' : cat}
-                  </button>
-                ))}
+          <div className="pt-1 border-t border-slate-100">
+            <button 
+              onClick={() => setisOpen(!isOpen)}
+              className="w-full py-2 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1"
+            >
+              {isOpen ? '絞り込みを閉じる ▲' : '絞り込みを開く ▼'}
+            </button>
+          </div>
+
+          {isOpen && (
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              {uniqueCategories.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">部門で絞り込む</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categoryOptions.map((cat, i) => (
+                      <button key={i} onClick={() => {
+                        setFilterCategory(cat); 
+                        setFilterLocation('すべて');
+                      }}
+                      
+                      
+                      
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                        {cat === 'すべて' ? 'すべての部門' : cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {presetLocations.map((loc, i) => (
+                    <button key={i} onClick={() => {
+                      setFilterLocation(loc);
+                      setFilterCategory('すべて');
+                    }}
+                    
+                    
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {loc}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
-
-          <div className="space-y-1.5 pt-1 border-t border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
-            <div className="flex flex-wrap gap-1.5">
-              {presetLocations.map((loc, i) => (
-                <button key={i} onClick={() => setFilterLocation(loc)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{loc}</button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {currentMapPath && (
@@ -520,7 +550,7 @@ export default function App() {
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-4 flex items-center justify-between shadow-inner">
                  <span className="text-xs font-bold text-slate-500 block">現在の混雑度 / 待ち時間</span>
                  <span className={`text-xl font-black ${selectedGroupInfo.waitingTime !== "ー" ? 'text-orange-600' : 'text-slate-700'}`}>
-                   {selectedGroupInfo.waitingTime !== "ー" ? `🔥 ${selectedGroupInfo.waitingTime}` : "待ちなし (ー)"}
+                    {selectedGroupInfo.waitingTime !== "ー" ? `🔥 ${selectedGroupInfo.waitingTime}` : "待ちなし (ー)"}
                  </span>
               </div>
               
