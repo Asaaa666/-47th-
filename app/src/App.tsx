@@ -41,11 +41,14 @@ export default function App() {
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
+  // 下部リストからピンへの移動時のみ使用するスクロールステート
+  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setHighlightedGroupName(null);
-  }, [filterLocation, filterCategory, searchTerm, sortBy]);
+  }, [filterCategory, searchTerm, sortBy]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -57,6 +60,20 @@ export default function App() {
     const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
     window.history.replaceState(null, '', newRelativePathQuery);
   }, [filterLocation]);
+
+  // 下部カードクリック時のみマップへスムーズスクロール
+  useEffect(() => {
+    if (!pendingScroll) return;
+
+    const timer = setTimeout(() => {
+      if (pendingScroll.type === 'map' && mapContainerRef.current) {
+        mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setPendingScroll(null);
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [filterLocation, pendingScroll]);
 
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
     const filenames: string[] = [];
@@ -141,7 +158,6 @@ export default function App() {
     return 'other_fallback'; 
   };
 
-  // 🚀 GASキャッシュサーバーから高速データ一括取得
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -152,7 +168,6 @@ export default function App() {
 
       const coordsCategoryMap: Record<string, string> = {};
 
-      // 1. coords（マップ座標 & 部門データ）
       const coordsRows = (data.coords || []).slice(1);
       const parsedCoords: Coordinate[] = coordsRows.filter((row: any[]) => row && row[0] && row[1]).map((row: any[]) => {
         const groupName = String(row[0]).trim();
@@ -170,7 +185,6 @@ export default function App() {
       });
       setCoords(parsedCoords);
 
-      // 2. updates（リアルタイム混雑度データ）
       const updatesRows = (data.updates || []).slice(1);
       const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};
       
@@ -180,7 +194,6 @@ export default function App() {
         if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };
       });
 
-      // 3. groups（団体基本データ）
       const groupsRows = (data.groups || []).slice(1);
       let mergedGroups: Group[] = groupsRows.filter((row: any[]) => row && row.length > 1 && row[1]).map((row: any[]) => {
         const name = String(row[1]).trim();
@@ -198,7 +211,6 @@ export default function App() {
         };
       });
 
-      // フォールバック追加（生物部 / 図書研究部）
       const hasBio = mergedGroups.some(g => g.name.includes("生物"));
       const hasLibrary = mergedGroups.some(g => g.name.includes("図書"));
 
@@ -236,11 +248,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 部門リスト生成
   const uniqueCategories = Array.from(new Set(groups.map(g => g.category).filter(Boolean)));
   const categoryOptions = ['すべて', ...uniqueCategories];
 
-  // フィルタリング & ソート
   const filteredGroups = groups.filter(group => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = group.name.toLowerCase().includes(searchLower) || 
@@ -291,6 +301,7 @@ export default function App() {
 
   const currentMapPath = getMapImagePath(filterLocation);
   const activePins = coords.filter(pin => pin.location === filterLocation);
+  const highlightedGroup = groups.find(g => g.name === highlightedGroupName);
 
   const getPinTheme = (time: string) => {
     if (time === "ー" || !time) return { border: "border-blue-500", bg: "bg-blue-500" };
@@ -302,21 +313,28 @@ export default function App() {
     return { border: "border-red-600", bg: "bg-red-600" };
   };
 
+  // 🎯 ピン/カードのタップハンドラ
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
-    if (filterLocation === 'すべて') {
-      setModalGroupName(groupName);
-    } else {
+    const groupCoord = coords.find(c => c.groupName === groupName);
+    const group = groups.find(g => g.name === groupName);
+    const targetLocation = groupCoord?.location || (group ? getUnifiedLocationGroup(group.location) : null);
+
+    if (targetLocation && getMapImagePath(targetLocation)) {
       setHighlightedGroupName(groupName);
-      setTimeout(() => {
-        if (source === 'map') {
-          const el = document.getElementById(`card-${groupName}`);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else if (source === 'list') {
-          if (mapContainerRef.current) {
-            mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }
-      }, 50);
+
+      if (filterLocation !== targetLocation) {
+        setFilterLocation(targetLocation);
+      }
+
+      if (source === 'list') {
+        // 下のリストから押した場合のみマップへスクロール
+        setPendingScroll({ type: 'map', groupName });
+      } else if (source === 'map' && window.innerWidth < 1024) {
+        // スマホでマップピンを押した場合は即時モーダル表示
+        setModalGroupName(groupName);
+      }
+    } else {
+      setModalGroupName(groupName);
     }
   };
 
@@ -375,14 +393,15 @@ export default function App() {
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">部門で絞り込む</span>
                   <div className="flex flex-wrap gap-1.5">
                     {categoryOptions.map((cat, i) => (
-                      <button key={i} onClick={() => {
-                        setFilterCategory(cat); 
-                        setFilterLocation('すべて');
-                      }}
-                      
-                      
-                      
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      <button 
+                        key={i} 
+                        onClick={() => {
+                          setFilterCategory(cat);
+                          setFilterLocation('すべて');
+                          setHighlightedGroupName(null);
+                        }} 
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      >
                         {cat === 'すべて' ? 'すべての部門' : cat}
                       </button>
                     ))}
@@ -394,13 +413,15 @@ export default function App() {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">場所・エリアで絞り込む</span>
                 <div className="flex flex-wrap gap-1.5">
                   {presetLocations.map((loc, i) => (
-                    <button key={i} onClick={() => {
-                      setFilterLocation(loc);
-                      setFilterCategory('すべて');
-                    }}
-                    
-                    
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <button 
+                      key={i} 
+                      onClick={() => {
+                        setFilterLocation(loc);
+                        setFilterCategory('すべて');
+                        setHighlightedGroupName(null);
+                      }} 
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
                       {loc}
                     </button>
                   ))}
@@ -410,54 +431,133 @@ export default function App() {
           )}
         </div>
 
+        {/* 🗺️ マップ＆詳細のサイド・バイ・サイド表示セクション */}
         {currentMapPath && (
-          <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 scroll-mt-24">
-            <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-700">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
-            
-            <div className="w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative">
-              <div className="relative inline-block w-full leading-none text-[0]">
-                <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
-                
-                {activePins.map((pin, i) => {
-                  const groupInfo = groups.find(g => g.name === pin.groupName);
-                  const theme = getPinTheme(groupInfo?.waitingTime || "ー");
-                  const isTarget = highlightedGroupName === pin.groupName;
-                  const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
-                  const candidatesJson = JSON.stringify(candidates);
-                  
-                  return (
-                    <div 
-                      key={i} 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleItemClick(pin.groupName, 'map');
-                      }} 
-                      className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 transition-all ${isTarget ? 'scale-125 z-40' : 'hover:scale-125 z-20 hover:z-30'}`} 
-                      style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
-                    >
-                      <div className="relative flex items-center justify-center">
-                        <div className={`w-8 h-8 md:w-20 md:h-20 rounded-full bg-white border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${isTarget ? 'ring-4 ring-blue-300 border-blue-600' : theme.border}`}>
-                          {candidates.length > 0 ? (
-                            <img 
-                              src={candidates[0]} 
-                              alt={pin.groupName} 
-                              className="w-full h-full object-cover" 
-                              data-candidates={candidatesJson} 
-                              data-index="0" 
-                              onError={handleLogoError} 
-                            />
-                          ) : (
-                            <span className="text-[10px] font-bold text-slate-500">{pin.groupName.slice(0, 2)}</span>
-                          )}
-                        </div>
+          <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-800">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
+                <span className="hidden lg:inline-block text-xs text-slate-400 font-normal">（ピンを押すと右側に詳細が表示されます）</span>
+              </div>
+              {highlightedGroupName && (
+                <button 
+                  onClick={() => setHighlightedGroupName(null)}
+                  className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg font-medium transition"
+                >
+                  ✕ 選択解除
+                </button>
+              )}
+            </div>
 
-                        <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50' : 'opacity-0 group-hover:opacity-100'}`}>
-                          {pin.groupName}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              {/* 左側: マップ表示エリア */}
+              <div className={`${highlightedGroup ? 'lg:col-span-7 xl:col-span-8' : 'lg:col-span-12'} transition-all duration-300`}>
+                <div className="w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative shadow-inner">
+                  <div className="relative inline-block w-full leading-none text-[0]">
+                    <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
+                    
+                    {activePins.map((pin, i) => {
+                      const groupInfo = groups.find(g => g.name === pin.groupName);
+                      const theme = getPinTheme(groupInfo?.waitingTime || "ー");
+                      const isTarget = highlightedGroupName === pin.groupName;
+                      const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
+                      const candidatesJson = JSON.stringify(candidates);
+                      
+                      return (
+                        <div 
+                          key={i} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleItemClick(pin.groupName, 'map');
+                          }} 
+                          className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 transition-all ${isTarget ? 'scale-125 z-50' : 'hover:scale-125 z-20 hover:z-30'}`} 
+                          style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+                        >
+                          <div className="relative flex items-center justify-center">
+                            <div className={`w-8 h-8 md:w-16 md:h-16 rounded-full bg-white border-2 md:border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${
+                              isTarget 
+                                ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.9)] animate-pulse' 
+                                : theme.border
+                            }`}>
+                              {candidates.length > 0 ? (
+                                <img 
+                                  src={candidates[0]} 
+                                  alt={pin.groupName} 
+                                  className="w-full h-full object-cover" 
+                                  data-candidates={candidatesJson} 
+                                  data-index="0" 
+                                  onError={handleLogoError} 
+                                />
+                              ) : (
+                                <span className="text-[10px] md:text-xs font-bold text-slate-500">{pin.groupName.slice(0, 2)}</span>
+                              )}
+                            </div>
+
+                            <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] md:text-xs font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50 bg-yellow-500 text-slate-900' : 'opacity-0 group-hover:opacity-100'}`}>
+                              {pin.groupName}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 右側: PC画面専用・リアルタイム詳細カード (1画面でマップと同時確認可能) */}
+              <div className="hidden lg:block lg:col-span-5 xl:col-span-4 sticky top-20">
+                {highlightedGroup ? (
+                  <div className="bg-amber-50/90 border-2 border-amber-400 rounded-xl p-5 shadow-md space-y-4 animate-in fade-in duration-200">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-xl bg-white border border-amber-300 flex-shrink-0 flex items-center justify-center overflow-hidden shadow-sm relative">
+                          {(() => {
+                            const candidates = getLogoSrcCandidates(highlightedGroup.logo, highlightedGroup.name);
+                            return candidates.length > 0 ? (
+                              <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={JSON.stringify(candidates)} data-index="0" onError={handleLogoError} />
+                            ) : ( <div className="text-xl font-bold text-slate-400">祭</div> );
+                          })()}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg text-slate-900 leading-snug">{highlightedGroup.name}</h3>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">📍 {highlightedGroup.location}</span>
+                            {highlightedGroup.category && (
+                              <span className="text-[11px] font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">🏷️ {highlightedGroup.category}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="bg-white/80 rounded-xl p-3 border border-amber-200 flex items-center justify-between shadow-sm">
+                      <span className="text-xs font-bold text-slate-500">混雑度 / 待ち時間</span>
+                      <span className="text-sm font-black text-orange-600">
+                        {highlightedGroup.waitingTime !== "ー" ? `🔥 レベル ${highlightedGroup.waitingTime}` : "待ちなし (ー)"}
+                      </span>
+                    </div>
+
+                    {highlightedGroup.comment && (
+                      <div className="bg-orange-100/80 p-3 rounded-xl border border-orange-200 text-xs text-orange-900 font-bold">
+                        💬 "{highlightedGroup.comment}"
+                      </div>
+                    )}
+
+                    {highlightedGroup.description && (
+                      <div className="text-xs text-slate-700 leading-relaxed font-medium bg-white/70 p-3.5 rounded-xl border border-amber-200/80 max-h-56 overflow-y-auto">
+                        {highlightedGroup.description}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-slate-50/50">
+                    <span className="text-4xl mb-3">👈</span>
+                    <p className="text-xs font-bold text-slate-600">ピンをクリックしてください</p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      マップ上の団体ピンを押すと<br/>ここに説明と混雑状況が<br/>同時に表示されます
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -474,7 +574,7 @@ export default function App() {
                 key={idx} 
                 id={`card-${group.name}`}
                 onClick={() => handleItemClick(group.name, 'list')} 
-                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer scroll-mt-24 ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-200 scale-[1.02]' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
+                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer scroll-mt-24 ${isHighlighted ? 'border-yellow-500 ring-2 ring-yellow-300 scale-[1.02] shadow-md' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
               >
                 <div>
                   <div className="flex items-start gap-3">
@@ -521,6 +621,7 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
+      {/* スマホ用 ＆ ダイレクトアクセス用 モーダル */}
       {selectedGroupInfo && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -579,3 +680,4 @@ export default function App() {
     </div>
   );
 }
+
