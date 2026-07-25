@@ -23,6 +23,24 @@ interface Coordinate {
   category?: string;
 }
 
+// ⏱️ 更新からの経過時間を計算する関数
+const getTimeAgo = (dateString: string): string => {
+  if (!dateString || dateString === "ー") return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return "たった今";
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}分前`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}時間前`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  return `${diffInDays}日前`;
+};
+
 export default function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [coords, setCoords] = useState<Coordinate[]>([]);
@@ -41,14 +59,9 @@ export default function App() {
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
-  // 下部リストからピンへの移動時のみ使用するスクロールステート
   const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setHighlightedGroupName(null);
-  }, [filterCategory, searchTerm, sortBy]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -60,6 +73,31 @@ export default function App() {
     const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
     window.history.replaceState(null, '', newRelativePathQuery);
   }, [filterLocation]);
+
+  // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
+  const activePins = coords.filter(pin => pin.location === filterLocation);
+  
+  useEffect(() => {
+    if (activePins.length > 0) {
+      const exists = activePins.some(p => p.groupName === highlightedGroupName);
+      if (!exists) {
+        const sortedPins = [...activePins].sort((a, b) => {
+          const getScore = (name: string) => {
+            const g = groups.find(item => item.name === name);
+            if (!g || !g.waitingTime) return 999;
+            if (g.waitingTime === 'ー') return 0; 
+            const val = parseFloat(g.waitingTime);
+            return isNaN(val) ? 999 : val;
+          };
+          return getScore(a.groupName) - getScore(b.groupName);
+        });
+
+        setHighlightedGroupName(sortedPins[0].groupName);
+      }
+    } else {
+      setHighlightedGroupName(null);
+    }
+  }, [filterLocation, coords, groups]);
 
   // 下部カードクリック時のみマップへスムーズスクロール
   useEffect(() => {
@@ -121,9 +159,9 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
+  // 🗺️ 屋台も含め、マップ画像のない場所は null を返す（絞り込み機能自体は維持）
   const getMapImagePath = (buttonName: string): string | null => {
-    if (!buttonName || buttonName === 'すべて' || buttonName === 'その他') return null;
-    if (buttonName === '屋台') return '/屋台 (1).png';
+    if (!buttonName || buttonName === 'すべて' || buttonName === 'その他' || buttonName === '屋台') return null;
     
     if (buttonName === '中学・高校棟 1階') return '/1階 (1).png';
     if (buttonName === '中学・高校棟 2階') return '/2階 (1).png';
@@ -300,7 +338,6 @@ export default function App() {
   ];
 
   const currentMapPath = getMapImagePath(filterLocation);
-  const activePins = coords.filter(pin => pin.location === filterLocation);
   const highlightedGroup = groups.find(g => g.name === highlightedGroupName);
 
   const getPinTheme = (time: string) => {
@@ -313,7 +350,6 @@ export default function App() {
     return { border: "border-red-600", bg: "bg-red-600" };
   };
 
-  // 🎯 ピン/カードのタップハンドラ
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
     const groupCoord = coords.find(c => c.groupName === groupName);
     const group = groups.find(g => g.name === groupName);
@@ -327,10 +363,8 @@ export default function App() {
       }
 
       if (source === 'list') {
-        // 下のリストから押した場合のみマップへスクロール
         setPendingScroll({ type: 'map', groupName });
       } else if (source === 'map' && window.innerWidth < 1024) {
-        // スマホでマップピンを押した場合は即時モーダル表示
         setModalGroupName(groupName);
       }
     } else {
@@ -398,7 +432,6 @@ export default function App() {
                         onClick={() => {
                           setFilterCategory(cat);
                           setFilterLocation('すべて');
-                          setHighlightedGroupName(null);
                         }} 
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                       >
@@ -418,7 +451,6 @@ export default function App() {
                       onClick={() => {
                         setFilterLocation(loc);
                         setFilterCategory('すべて');
-                        setHighlightedGroupName(null);
                       }} 
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterLocation === loc ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                     >
@@ -431,27 +463,20 @@ export default function App() {
           )}
         </div>
 
-        {/* 🗺️ マップ＆詳細のサイド・バイ・サイド表示セクション */}
+        {/* 🗺️ マップコンテナ（マップ画像が存在するエリアのみ表示） */}
         {currentMapPath && (
           <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-800">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
-                <span className="hidden lg:inline-block text-xs text-slate-400 font-normal">（ピンを押すと右側に詳細が表示されます）</span>
+                <span className="hidden lg:inline-block text-xs text-slate-400 font-normal">（一番待ち時間の低い団体が自動選択されています）</span>
               </div>
-              {highlightedGroupName && (
-                <button 
-                  onClick={() => setHighlightedGroupName(null)}
-                  className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg font-medium transition"
-                >
-                  ✕ 選択解除
-                </button>
-              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              {/* 左側: マップ表示エリア */}
-              <div className={`${highlightedGroup ? 'lg:col-span-7 xl:col-span-8' : 'lg:col-span-12'} transition-all duration-300`}>
+              
+              {/* 左側: マップエリア */}
+              <div className="lg:col-span-7 xl:col-span-8">
                 <div className="w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative shadow-inner">
                   <div className="relative inline-block w-full leading-none text-[0]">
                     <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
@@ -474,7 +499,7 @@ export default function App() {
                           style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                         >
                           <div className="relative flex items-center justify-center">
-                            <div className={`w-8 h-8 md:w-16 md:h-16 rounded-full bg-white border-2 md:border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${
+                            <div className={`w-8 h-8 md:w-14 md:h-14 rounded-full bg-white border-2 md:border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${
                               isTarget 
                                 ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.9)] animate-pulse' 
                                 : theme.border
@@ -504,7 +529,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 右側: PC画面専用・リアルタイム詳細カード (1画面でマップと同時確認可能) */}
+              {/* 右側: リアルタイム詳細カード */}
               <div className="hidden lg:block lg:col-span-5 xl:col-span-4 sticky top-20">
                 {highlightedGroup ? (
                   <div className="bg-amber-50/90 border-2 border-amber-400 rounded-xl p-5 shadow-md space-y-4 animate-in fade-in duration-200">
@@ -531,7 +556,12 @@ export default function App() {
                     </div>
 
                     <div className="bg-white/80 rounded-xl p-3 border border-amber-200 flex items-center justify-between shadow-sm">
-                      <span className="text-xs font-bold text-slate-500">混雑度 / 待ち時間</span>
+                      <div>
+                        <span className="text-xs font-bold text-slate-500 block">混雑度 / 待ち時間</span>
+                        {getTimeAgo(highlightedGroup.lastUpdated) && (
+                          <span className="text-[10px] text-slate-400 font-medium">🕒 {getTimeAgo(highlightedGroup.lastUpdated)}に更新</span>
+                        )}
+                      </div>
                       <span className="text-sm font-black text-orange-600">
                         {highlightedGroup.waitingTime !== "ー" ? `🔥 レベル ${highlightedGroup.waitingTime}` : "待ちなし (ー)"}
                       </span>
@@ -551,23 +581,23 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-slate-50/50">
-                    <span className="text-4xl mb-3">👈</span>
-                    <p className="text-xs font-bold text-slate-600">ピンをクリックしてください</p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      マップ上の団体ピンを押すと<br/>ここに説明と混雑状況が<br/>同時に表示されます
-                    </p>
+                    <span className="text-4xl mb-3">📍</span>
+                    <p className="text-xs font-bold text-slate-600">ピン情報がありません</p>
                   </div>
                 )}
               </div>
+
             </div>
           </div>
         )}
 
+        {/* 団体カードグリッド */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredGroups.map((group, idx) => {
             const candidates = getLogoSrcCandidates(group.logo, group.name);
             const candidatesJson = JSON.stringify(candidates);
             const isHighlighted = highlightedGroupName === group.name;
+            const timeAgoStr = getTimeAgo(group.lastUpdated);
             
             return (
               <div 
@@ -586,7 +616,18 @@ export default function App() {
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start gap-2">
                         <h3 className="font-bold text-base leading-tight truncate">{group.name}</h3>
-                        <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${group.status === '更新済' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{group.status}</span>
+                        
+                        {/* ⏱️ ステータスと〇分前の表示 */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${group.status === '更新済' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {group.status}
+                          </span>
+                          {timeAgoStr && (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                              {timeAgoStr}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -621,7 +662,7 @@ export default function App() {
         {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
-      {/* スマホ用 ＆ ダイレクトアクセス用 モーダル */}
+      {/* スマホ用モーダル */}
       {selectedGroupInfo && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -649,7 +690,12 @@ export default function App() {
               </div>
               
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-4 flex items-center justify-between shadow-inner">
-                 <span className="text-xs font-bold text-slate-500 block">現在の混雑度 / 待ち時間</span>
+                 <div>
+                    <span className="text-xs font-bold text-slate-500 block">現在の混雑度 / 待ち時間</span>
+                    {getTimeAgo(selectedGroupInfo.lastUpdated) && (
+                      <span className="text-[10px] text-slate-400 font-medium">🕒 {getTimeAgo(selectedGroupInfo.lastUpdated)}に更新</span>
+                    )}
+                 </div>
                  <span className={`text-xl font-black ${selectedGroupInfo.waitingTime !== "ー" ? 'text-orange-600' : 'text-slate-700'}`}>
                     {selectedGroupInfo.waitingTime !== "ー" ? `🔥 ${selectedGroupInfo.waitingTime}` : "待ちなし (ー)"}
                  </span>
@@ -680,4 +726,3 @@ export default function App() {
     </div>
   );
 }
-
