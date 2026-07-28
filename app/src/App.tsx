@@ -55,6 +55,12 @@ export default function App() {
   const [filterCategory, setFilterCategory] = useState<string>('すべて');
   const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
   const [isOpen, setisOpen] = useState(false);
+  const [showGuide, setShowGuide] = useState(false); // 📖 使い方ガイドの開閉状態
+
+  // 🎯 座標測定機能用のステート
+  const [measureMode, setMeasureMode] = useState(false);
+  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const [modalGroupName, setModalGroupName] = useState<string | null>(null);
   const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
@@ -99,6 +105,11 @@ export default function App() {
     }
   }, [filterLocation, coords, groups]);
 
+  // 場所切り替え時に測定座標をリセット
+  useEffect(() => {
+    setClickedCoord(null);
+  }, [filterLocation]);
+
   // 下部カードクリック時のみマップへスムーズスクロール
   useEffect(() => {
     if (!pendingScroll) return;
@@ -112,6 +123,27 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [filterLocation, pendingScroll]);
+
+  // 🎯 マップ画像クリック時の座標計算ハンドラ
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const xPercent = parseFloat(((clickX / rect.width) * 100).toFixed(1));
+    const yPercent = parseFloat(((clickY / rect.height) * 100).toFixed(1));
+
+    setClickedCoord({ x: xPercent, y: yPercent });
+  };
+
+  // 📋 クリップボードコピー処理
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(label);
+    setTimeout(() => setCopiedText(null), 2000);
+  };
 
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
     const filenames: string[] = [];
@@ -159,7 +191,6 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
-  // 🗺️ 屋台も含め、マップ画像のない場所は null を返す（絞り込み機能自体は維持）
   const getMapImagePath = (buttonName: string): string | null => {
     if (!buttonName || buttonName === 'すべて' || buttonName === 'その他' || buttonName === '屋台') return null;
     
@@ -351,6 +382,9 @@ export default function App() {
   };
 
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
+    // 測定モード中ならピンクリック無視
+    if (measureMode && source === 'map') return;
+
     const groupCoord = coords.find(c => c.groupName === groupName);
     const group = groups.find(g => g.name === groupName);
     const targetLocation = groupCoord?.location || (group ? getUnifiedLocationGroup(group.location) : null);
@@ -385,14 +419,118 @@ export default function App() {
               <p className="text-[10px] text-slate-400 font-medium -mt-0.5">Live Traffic & Activity Monitor</p>
             </div>
           </div>
-          <button onClick={fetchData} disabled={loading} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50">
-            <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
-            <span>{loading ? '読込中...' : '更新'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 🎯 座標測定モードトグルボタン */}
+            <button
+              onClick={() => setMeasureMode(!measureMode)}
+              className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 ${
+                measureMode 
+                  ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300' 
+                  : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+              }`}
+            >
+              <span>🎯</span>
+              <span>{measureMode ? '測定モードON' : '座標測定'}</span>
+            </button>
+
+            <button 
+              onClick={() => setShowGuide(!showGuide)} 
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 hover:bg-blue-100 transition active:scale-95"
+            >
+              <span>📖 使い方</span>
+            </button>
+            <button onClick={fetchData} disabled={loading} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50">
+              <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
+              <span>{loading ? '読込中...' : '更新'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 mt-6 space-y-6 relative z-10">
+
+        {/* 🎯 座標測定モードのアラートツールバー */}
+        {measureMode && (
+          <div className="bg-purple-900 text-white p-4 rounded-xl shadow-lg border border-purple-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl animate-bounce">🎯</span>
+              <div>
+                <h3 className="font-bold text-sm text-purple-100">座標測定モードが有効です</h3>
+                <p className="text-xs text-purple-300">マップ画像のピンを打ちたい場所を直接タップ/クリックしてください。</p>
+              </div>
+            </div>
+
+            {clickedCoord ? (
+              <div className="flex flex-wrap items-center gap-2 bg-purple-950/80 p-2 rounded-lg border border-purple-800 w-full md:w-auto">
+                <span className="font-mono text-xs text-purple-200 font-bold px-2">
+                  X: {clickedCoord.x}% | Y: {clickedCoord.y}%
+                </span>
+                <button
+                  onClick={() => copyToClipboard(`${clickedCoord.x}, ${clickedCoord.y}`, 'XY')}
+                  className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition active:scale-95"
+                >
+                  {copiedText === 'XY' ? '✅ コピー完了' : '📋 X, Y コピー'}
+                </button>
+                <button
+                  onClick={() => copyToClipboard(`新規団体\t${filterLocation}\t${clickedCoord.x}\t${clickedCoord.y}`, 'GAS')}
+                  className="px-2.5 py-1 rounded bg-purple-700 hover:bg-purple-600 text-purple-100 font-bold text-xs transition active:scale-95"
+                >
+                  {copiedText === 'GAS' ? '✅ コピー完了' : '📄 シート貼付用コピー'}
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-purple-400 italic bg-purple-950/50 px-3 py-1.5 rounded-lg border border-purple-800/50">
+                マップをタップすると座標が表示されます
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 📖 使い方ガイド */}
+        {showGuide && (
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b border-blue-200 pb-3">
+              <div className="flex items-center space-x-2">
+                <span className="text-xl">📖</span>
+                <h2 className="font-black text-base text-blue-900">使い方ガイド & 混雑度レベルについて</h2>
+              </div>
+              <button 
+                onClick={() => setShowGuide(false)}
+                className="text-xs font-bold text-blue-500 hover:text-blue-800 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-sm"
+              >
+                閉じる ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">🔥 混雑度レベルのニュアンス目安</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                <div className="bg-white p-2.5 rounded-xl border border-green-200 shadow-sm flex flex-col items-center text-center">
+                  <span className="font-black text-green-600 text-sm mb-0.5">レベル 1</span>
+                  <span className="font-bold text-slate-700">とても空いている</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-green-300 shadow-sm flex flex-col items-center text-center">
+                  <span className="font-black text-green-600 text-sm mb-0.5">レベル 2</span>
+                  <span className="font-bold text-slate-700">かなり空いている</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-orange-200 shadow-sm flex flex-col items-center text-center">
+                  <span className="font-black text-orange-500 text-sm mb-0.5">レベル 3</span>
+                  <span className="font-bold text-slate-700">問題なく回れる</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-red-200 shadow-sm flex flex-col items-center text-center">
+                  <span className="font-black text-red-500 text-sm mb-0.5">レベル 4</span>
+                  <span className="font-bold text-slate-700">かなり混んでいる</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-red-400 shadow-sm flex flex-col items-center text-center">
+                  <span className="font-black text-red-700 text-sm mb-0.5">レベル 5</span>
+                  <span className="font-bold text-slate-700">とても混んでいる</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 検索・フィルターエリア */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <input type="text" placeholder="🔍 団体名、部門、キーワードで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition" />
           
@@ -463,13 +601,17 @@ export default function App() {
           )}
         </div>
 
-        {/* 🗺️ マップコンテナ（マップ画像が存在するエリアのみ表示） */}
+        {/* 🗺️ マップコンテナ */}
         {currentMapPath && (
-          <div ref={mapContainerRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20">
+          <div ref={mapContainerRef} className={`bg-white border rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20 transition-all ${measureMode ? 'border-purple-400 ring-2 ring-purple-100' : 'border-slate-200'}`}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-800">🗺️ {filterLocation} のリアルタイムピンマップ</h2>
-                <span className="hidden lg:inline-block text-xs text-slate-400 font-normal">（一番待ち時間の低い団体が自動選択されています）</span>
+                <h2 className="text-base font-bold text-slate-800">🗺️ {filterLocation} のマップ</h2>
+                {measureMode && (
+                  <span className="text-xs font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                    🎯 クリックして座標を取得
+                  </span>
+                )}
               </div>
             </div>
 
@@ -477,10 +619,16 @@ export default function App() {
               
               {/* 左側: マップエリア */}
               <div className="lg:col-span-7 xl:col-span-8">
-                <div className="w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100 relative shadow-inner">
+                <div 
+                  onClick={handleMapClick}
+                  className={`w-full rounded-xl overflow-hidden border bg-slate-100 relative shadow-inner select-none ${
+                    measureMode ? 'cursor-crosshair border-purple-400' : 'border-slate-200'
+                  }`}
+                >
                   <div className="relative inline-block w-full leading-none text-[0]">
                     <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
                     
+                    {/* 既存の団体ピン */}
                     {activePins.map((pin, i) => {
                       const groupInfo = groups.find(g => g.name === pin.groupName);
                       const theme = getPinTheme(groupInfo?.waitingTime || "ー");
@@ -492,10 +640,14 @@ export default function App() {
                         <div 
                           key={i} 
                           onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(pin.groupName, 'map');
+                            if (!measureMode) {
+                              e.stopPropagation();
+                              handleItemClick(pin.groupName, 'map');
+                            }
                           }} 
-                          className={`absolute cursor-pointer group transform -translate-x-1/2 -translate-y-1/2 transition-all ${isTarget ? 'scale-125 z-50' : 'hover:scale-125 z-20 hover:z-30'}`} 
+                          className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all ${
+                            measureMode ? 'pointer-events-none opacity-60' : 'cursor-pointer group'
+                          } ${isTarget ? 'scale-125 z-40' : 'hover:scale-125 z-20 hover:z-30'}`} 
                           style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
                         >
                           <div className="relative flex items-center justify-center">
@@ -518,13 +670,34 @@ export default function App() {
                               )}
                             </div>
 
-                            <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] md:text-xs font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50 bg-yellow-500 text-slate-900' : 'opacity-0 group-hover:opacity-100'}`}>
-                              {pin.groupName}
-                            </div>
+                            {!measureMode && (
+                              <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] md:text-xs font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50 bg-yellow-500 text-slate-900' : 'opacity-0 group-hover:opacity-100'}`}>
+                                {pin.groupName}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
                     })}
+
+                    {/* 🎯 測定モード時の計測マーカー */}
+                    {measureMode && clickedCoord && (
+                      <div
+                        className="absolute z-50 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-in zoom-in-50 duration-150"
+                        style={{ left: `${clickedCoord.x}%`, top: `${clickedCoord.y}%` }}
+                      >
+                        <div className="relative flex items-center justify-center">
+                          {/* 十字カーソル風デザイン */}
+                          <div className="w-8 h-8 rounded-full border-2 border-purple-500 bg-purple-500/30 flex items-center justify-center shadow-lg animate-pulse">
+                            <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                          </div>
+                          <div className="absolute bottom-full mb-1 bg-purple-950 text-purple-100 font-mono text-[11px] font-bold px-2 py-0.5 rounded shadow-lg border border-purple-700 whitespace-nowrap">
+                            x: {clickedCoord.x}%, y: {clickedCoord.y}%
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
               </div>
@@ -562,164 +735,221 @@ export default function App() {
                           <span className="text-[10px] text-slate-400 font-medium">🕒 {getTimeAgo(highlightedGroup.lastUpdated)}に更新</span>
                         )}
                       </div>
-                      <span className="text-sm font-black text-orange-600">
-                        {highlightedGroup.waitingTime !== "ー" ? `🔥 レベル ${highlightedGroup.waitingTime}` : "待ちなし (ー)"}
-                      </span>
+                      <div className="text-right">
+                        {highlightedGroup.waitingTime !== "ー" ? (
+                          <div className="flex items-baseline gap-0.5">
+                            <span className="text-xs font-bold text-amber-700">レベル</span>
+                            <span className="text-3xl font-black text-amber-600">{highlightedGroup.waitingTime}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm font-bold text-slate-400">データなし</span>
+                        )}
+                      </div>
                     </div>
 
                     {highlightedGroup.comment && (
-                      <div className="bg-orange-100/80 p-3 rounded-xl border border-orange-200 text-xs text-orange-900 font-bold">
-                        💬 "{highlightedGroup.comment}"
+                      <div className="bg-white/90 p-3 rounded-lg border border-amber-200 text-xs text-amber-900 font-medium">
+                        💬 {highlightedGroup.comment}
                       </div>
                     )}
 
-                    {highlightedGroup.description && (
-                      <div className="text-xs text-slate-700 leading-relaxed font-medium bg-white/70 p-3.5 rounded-xl border border-amber-200/80 max-h-56 overflow-y-auto">
-                        {highlightedGroup.description}
-                      </div>
-                    )}
+                    <p className="text-xs text-slate-600 leading-relaxed bg-white/60 p-3 rounded-lg border border-amber-100">
+                      {highlightedGroup.description}
+                    </p>
                   </div>
                 ) : (
-                  <div className="h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-slate-50/50">
-                    <span className="text-4xl mb-3">📍</span>
-                    <p className="text-xs font-bold text-slate-600">ピン情報がありません</p>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-400">
+                    <p className="text-xs font-bold">マップ上のピンをタップすると<br />ここに詳細が表示されます</p>
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         )}
 
-        {/* 団体カードグリッド */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredGroups.map((group, idx) => {
-            const candidates = getLogoSrcCandidates(group.logo, group.name);
-            const candidatesJson = JSON.stringify(candidates);
-            const isHighlighted = highlightedGroupName === group.name;
-            const timeAgoStr = getTimeAgo(group.lastUpdated);
-            
-            return (
-              <div 
-                key={idx} 
-                id={`card-${group.name}`}
-                onClick={() => handleItemClick(group.name, 'list')} 
-                className={`bg-white rounded-xl shadow-sm border transition-all p-5 flex flex-col justify-between space-y-4 cursor-pointer scroll-mt-24 ${isHighlighted ? 'border-yellow-500 ring-2 ring-yellow-300 scale-[1.02] shadow-md' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}`}
-              >
-                <div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
-                      {candidates.length > 0 ? (
-                        <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={candidatesJson} data-index="0" onError={handleLogoError} />
-                      ) : ( <div className="text-xl font-bold text-slate-400">祭</div> )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <h3 className="font-bold text-base leading-tight truncate">{group.name}</h3>
-                        
-                        {/* ⏱️ ステータスと〇分前の表示 */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${group.status === '更新済' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {group.status}
-                          </span>
-                          {timeAgoStr && (
-                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                              {timeAgoStr}
-                            </span>
+        {/* 📋 団体・展示一覧エリア */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-slate-800">
+              📋 該当団体一覧 <span className="text-xs font-normal text-slate-500">({filteredGroups.length}件)</span>
+            </h2>
+          </div>
+
+          {filteredGroups.length === 0 ? (
+            <div className="bg-white rounded-xl p-8 border border-slate-200 text-center space-y-2">
+              <span className="text-3xl">🔍</span>
+              <p className="text-sm font-bold text-slate-600">条件に一致する団体が見つかりませんでした</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredGroups.map((group, idx) => {
+                const candidates = getLogoSrcCandidates(group.logo, group.name);
+                const candidatesJson = JSON.stringify(candidates);
+                const timeAgoStr = getTimeAgo(group.lastUpdated);
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => handleItemClick(group.name, 'list')}
+                    className="bg-white rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-3 group"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
+                            {candidates.length > 0 ? (
+                              <img
+                                src={candidates[0]}
+                                alt={group.name}
+                                className="w-full h-full object-cover"
+                                data-candidates={candidatesJson}
+                                data-index="0"
+                                onError={handleLogoError}
+                              />
+                            ) : (
+                              <span className="text-sm font-bold text-slate-400">祭</span>
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition line-clamp-1">
+                              {group.name}
+                            </h3>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                📍 {group.location}
+                              </span>
+                              {group.category && (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  {group.category}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          {group.waitingTime !== "ー" ? (
+                            <div className="flex items-baseline gap-0.5">
+                              <span className="text-[10px] font-bold text-slate-400">Lv.</span>
+                              <span className="text-xl font-black text-orange-500">{group.waitingTime}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-300">ー</span>
                           )}
                         </div>
                       </div>
-                      
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <span className="text-xs font-semibold text-blue-600">📍 {group.location}</span>
-                        {group.category && (
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            🏷️ {group.category}
-                          </span>
-                        )}
-                      </div>
+
+                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                        {group.description}
+                      </p>
+
+                      {group.comment && (
+                        <div className="bg-slate-50 p-2 rounded-lg text-[11px] text-slate-600 border border-slate-100 line-clamp-1">
+                          💬 {group.comment}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                      <span>{timeAgoStr ? `🕒 ${timeAgoStr}` : '未更新'}</span>
+                      <span className="text-blue-500 font-bold group-hover:underline">マップ・詳細を見る →</span>
                     </div>
                   </div>
-                  <p className={`text-xs text-slate-500 mt-3 leading-relaxed transition-all ${isHighlighted ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
-                    {group.description}
-                  </p>
-                </div>
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">混雑度/待ち時間</span>
-                    <span className="text-sm font-bold text-slate-700">{group.waitingTime !== "ー" ? <span className="text-orange-600">🔥 レベル {group.waitingTime}</span> : <span className="text-slate-400">ー</span>}</span>
-                  </div>
-                  {group.comment && ( 
-                    <div className="text-right max-w-[60%] bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
-                      <span className={`text-[11px] text-slate-600 block font-medium ${isHighlighted ? '' : 'truncate'}`}>"{group.comment}"</span>
-                    </div> 
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-        {!loading && filteredGroups.length === 0 && <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400 font-medium text-sm">該当する団体が見つかりませんでした。</div>}
       </main>
 
-      {/* スマホ用モーダル */}
+      {/* モーダル表示 */}
       {selectedGroupInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setModalGroupName(null)}>
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setModalGroupName(null)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 hover:text-slate-800 z-10 font-bold transition">✕</button>
-            
-            <div className="p-6 overflow-y-auto">
-              <div className="w-24 h-24 mx-auto bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden mb-4 relative shadow-sm">
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setModalGroupName(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4 relative animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setModalGroupName(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-sm transition"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
                 {(() => {
                   const candidates = getLogoSrcCandidates(selectedGroupInfo.logo, selectedGroupInfo.name);
                   return candidates.length > 0 ? (
-                    <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={JSON.stringify(candidates)} data-index="0" onError={handleLogoError} />
-                  ) : ( <div className="text-3xl font-bold text-slate-400">祭</div> );
+                    <img
+                      src={candidates[0]}
+                      alt="logo"
+                      className="w-full h-full object-cover"
+                      data-candidates={JSON.stringify(candidates)}
+                      data-index="0"
+                      onError={handleLogoError}
+                    />
+                  ) : (
+                    <span className="text-xl font-bold text-slate-400">祭</span>
+                  );
                 })()}
               </div>
-              
-              <h3 className="text-2xl font-black text-center text-slate-800 mb-1">{selectedGroupInfo.name}</h3>
-              
-              <div className="flex justify-center items-center gap-2 mb-5">
-                <span className="text-sm font-bold text-blue-600">📍 {selectedGroupInfo.location}</span>
-                {selectedGroupInfo.category && (
-                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                    🏷️ {selectedGroupInfo.category}
+              <div>
+                <h3 className="font-bold text-base text-slate-900">{selectedGroupInfo.name}</h3>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    📍 {selectedGroupInfo.location}
                   </span>
+                  {selectedGroupInfo.category && (
+                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                      🏷️ {selectedGroupInfo.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-orange-800 block">混雑度 / 待ち時間</span>
+                {getTimeAgo(selectedGroupInfo.lastUpdated) && (
+                  <span className="text-[10px] text-orange-600">🕒 {getTimeAgo(selectedGroupInfo.lastUpdated)}に更新</span>
                 )}
               </div>
-              
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-4 flex items-center justify-between shadow-inner">
-                 <div>
-                    <span className="text-xs font-bold text-slate-500 block">現在の混雑度 / 待ち時間</span>
-                    {getTimeAgo(selectedGroupInfo.lastUpdated) && (
-                      <span className="text-[10px] text-slate-400 font-medium">🕒 {getTimeAgo(selectedGroupInfo.lastUpdated)}に更新</span>
-                    )}
-                 </div>
-                 <span className={`text-xl font-black ${selectedGroupInfo.waitingTime !== "ー" ? 'text-orange-600' : 'text-slate-700'}`}>
-                    {selectedGroupInfo.waitingTime !== "ー" ? `🔥 ${selectedGroupInfo.waitingTime}` : "待ちなし (ー)"}
-                 </span>
-              </div>
-              
-              {selectedGroupInfo.comment && (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-5 text-sm text-orange-800 font-bold shadow-sm flex gap-2">
-                  <span>💬</span>
-                  <p>{selectedGroupInfo.comment}</p>
-                </div>
-              )}
-              
-              <div className="border-t border-slate-100 pt-4">
-                <p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">
-                  {selectedGroupInfo.description}
-                </p>
+              <div className="text-right">
+                {selectedGroupInfo.waitingTime !== "ー" ? (
+                  <div className="flex items-baseline gap-0.5">
+                    <span className="text-xs font-bold text-orange-700">レベル</span>
+                    <span className="text-2xl font-black text-orange-600">{selectedGroupInfo.waitingTime}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs font-bold text-slate-400">未更新</span>
+                )}
               </div>
             </div>
-            
-            <div className="p-4 border-t border-slate-100 bg-slate-50">
-              <button onClick={() => setModalGroupName(null)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm transition active:scale-[0.98]">
-                閉じる
-              </button>
+
+            {selectedGroupInfo.comment && (
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700">
+                💬 <span className="font-semibold">{selectedGroupInfo.comment}</span>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">紹介文</span>
+              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                {selectedGroupInfo.description}
+              </p>
             </div>
+
+            <button
+              onClick={() => setModalGroupName(null)}
+              className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition shadow-sm"
+            >
+              閉じる
+            </button>
           </div>
         </div>
       )}
