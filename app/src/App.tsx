@@ -196,12 +196,12 @@ export default function App() {
     
     if (buttonName === '中学・高校棟 1階') return '/1階 (1).png';
     if (buttonName === '中学・高校棟 2階') return '/2階 (1).png';
-    if (buttonName === '中学棟 3階') return '/中学棟3階 (1).png';
-    if (buttonName === '中学棟 4階') return '/中学棟4階 (1).png';
-    if (buttonName === '中学棟 5階') return '/中学棟5階 (1).png';
-    if (buttonName === '高校棟 3階') return '/高校棟3階 (1).png';
-    if (buttonName === '高校棟 4階') return '/高校棟4階 (1).png';
-    if (buttonName === '高校棟 5階') return '/高校棟5階 (1).png';
+    if (buttonName === '中学棟 3階') return '/中学棟三階.png';
+    if (buttonName === '中学棟 4階') return '/中学棟四階.png';
+    if (buttonName === '中学棟 5階') return '/中学棟五階.png';
+    if (buttonName === '高校棟 3階') return '/高校棟三階.png';
+    if (buttonName === '高校棟 4階') return '/高校棟四階.png';
+    if (buttonName === '高校棟 5階') return '/高校棟五階.png';
     return null;
   };
 
@@ -413,15 +413,18 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 text-white p-2 rounded-xl shadow-md flex items-center justify-center text-xl font-bold w-9 h-9">🎪</div>
+            <img 
+              src="/logo.jpg" 
+              alt="打越祭ロゴ" 
+              className="w-10 h-10 object-contain rounded-xl shadow-md"
+            />
             <div>
-              <h1 className="font-black text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">打越祭リアルタイム混雑マップ</h1>
+              <h1 className="font-black text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">打越祭リアルタイム混雑サイト</h1>
               <p className="text-[10px] text-slate-400 font-medium -mt-0.5">Live Traffic & Activity Monitor</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* 🎯 座標測定モードトグルボタン */}
-            <button
+                     <button
               onClick={() => setMeasureMode(!measureMode)}
               className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 ${
                 measureMode 
@@ -431,8 +434,7 @@ export default function App() {
             >
               <span>🎯</span>
               <span>{measureMode ? '測定モードON' : '座標測定'}</span>
-            </button>
-
+            </button> 
             <button 
               onClick={() => setShowGuide(!showGuide)} 
               className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 hover:bg-blue-100 transition active:scale-95"
