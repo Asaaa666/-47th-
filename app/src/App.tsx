@@ -1,103 +1,104 @@
-import { useState, useEffect, useRef } from 'react'; 　// Reactというアプリを動かす基本機能の中でデータを管理するUsestateや、データを読み込むUseeffect,実際の画面を書くのに使うUseRefを導入する文　　
+import { useState, useEffect, useRef } from 'react';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";//このスプレットシートからデータを読み込むよという文
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";
 
 interface Group {
-  name: string; //団体名
-  description: string; //団体の説明
-  location: string; //何階にあるか
-  logo: string; //ロゴの画像
-  status: '更新済' | '未更新'; //更新されているかどうか
-  waitingTime: string; //５段階評価
-  comment: string; //コメント（没）
-  lastUpdated: string; //最終更新日時
-  category: string; //カテゴリー　これらをまとめて、Groupとして読み込むよという文
+  name: string;
+  description: string;
+  location: string;
+  logo: string;
+  status: '更新済' | '未更新';
+  waitingTime: string;
+  comment: string;
+  lastUpdated: string;
+  category: string;
 }
 
-interface Coordinate { //マップに使う座標の取得
-  groupName: string; //団体名
-  location: string; //何階にあるか
-  x: number; //x座標
-  y: number; //y座標
-  category?: string; //カテゴリー
+interface Coordinate {
+  groupName: string;
+  location: string;
+  x: number;
+  y: number;
+  category?: string;
 }
 
 // ⏱️ 更新からの経過時間を計算する関数
-const getTimeAgo = (dateString: string): string => {//更新日時の文字列を受け取る
-  if (!dateString || dateString === "ー") return "";//更新日時がない場合は空文字列を返す
-  const date = new Date(dateString); //文字列を新しい日付オブジェクトに変換する
-  if (isNaN(date.getTime())) return ""; //5段階評価がセルになかったら空を表示
+const getTimeAgo = (dateString: string): string => {
+  if (!dateString || dateString === "ー") return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
 
-  const now = new Date();//現在の日時を表示
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);//現在の日時と更新日時の差を秒単位で計算
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return "たった今";//1分以内ならたった今
-  const diffInMinutes = Math.floor(diffInSeconds / 60);//1分=60秒
-  if (diffInMinutes < 60) return `${diffInMinutes}分前`;//60分以内なら、分単位で表示
-  const diffInHours = Math.floor(diffInMinutes / 60); //1時間＝60分
-  if (diffInHours < 24) return `${diffInHours}時間前`;//24時間以内なら、時間単位で表示
-  const diffInDays = Math.floor(diffInHours / 24);//1日＝24時間
-  return `${diffInDays}日前`;//それ以降は日単位で表示
+  if (diffInSeconds < 60) return "たった今";
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}分前`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}時間前`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  return `${diffInDays}日前`;
 };
 
-export default function App() {//Appというものを作り始める
-  const [groups, setGroups] = useState<Group[]>([]);//グループのデータを管理するためのスプレッドシートのデータを読み込むため,ひとまず空にしておいて読み込んだらSetgroupによってGroupの中に保存される
-  const [coords, setCoords] = useState<Coordinate[]>([]);//スプレットシートのcoordsから座標のデータをひとまず空にしておいてから入手、管理する
-  const [loading, setLoading] = useState(true);//データの読み込み中かどうかを管理するためのコード
-  const [searchTerm, setSearchTerm] = useState('');//検索語を管理するためのコード
+export default function App() {
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [coords, setCoords] = useState<Coordinate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   
-  const [filterLocation, setFilterLocation] = useState(() => {//場所の絞り込みを管理するためのコード、例えば場所を絞り込んでたら今どこに絞り込んでるかを保存する
-    const params = new URLSearchParams(window.location.search);//場所を選んでたりしたらちょっとURLを変える
-    return params.get('location') || 'すべて';//URLが場所の絞り込みをしてたらその場所を表示、してなかったらすべてを表示
-  });//閉じる
+  const [filterLocation, setFilterLocation] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('location') || 'すべて';
+  });
 
-  const [filterCategory, setFilterCategory] = useState<string>('すべて');//絞り込み機能は場所だけじゃなくて、カテゴリーもやる、ひとまずはすべて
-  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');//待ち時間順、名前順、カテゴリ順がある、初期設定は待ち時間
-  const [isOpen, setisOpen] = useState(false);//絞り込みを閉じるに初期設定
+  const [filterCategory, setFilterCategory] = useState<string>('すべて');
+  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
+  const [isOpen, setisOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(false); // 📖 使い方ガイドの開閉状態
 
   // 🎯 座標測定機能用のステート
-  const [measureMode, setMeasureMode] = useState(false);//本番の際は使わないがマップ作製の時に便利な座標測定モード、今年のやつ丸ごと引き継ぐなら使わなくてよし
-  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);//タップされたら座標を取得するためのコード
-  const [copiedText, setCopiedText] = useState<string | null>(null);//座標コピーできるためのコード,nullというのはコピーされてない状態、コピーされたらコードが反応するようにするためのコード
+  const [measureMode, setMeasureMode] = useState(false);
+  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  const [modalGroupName, setModalGroupName] = useState<string | null>(null);//モーダルで表示する団体名を管理するためのコード、モーダルとは、画面の上にポップアップで表示されるウィンドウのこと
-  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);//マップ上で強調表示する団体を管理するためのコード、ひとまず空
+  const [modalGroupName, setModalGroupName] = useState<string | null>(null);
+  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
 
-  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);//マップ上で特定の団体にスクロールするためのコード、最初は空
+  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);
 
-  const mapContainerRef = useRef<HTMLDivElement>(null);//マップまでスクロールするためのコード、マップができるまでは空
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {//変化があったら処理を行うためのコード
-    const params = new URLSearchParams(window.location.search);//URLで絞り込みしてるかを確認するためのコード
-    if (filterLocation && filterLocation !== 'すべて') {//もしフィルターがなかったらすべて
-      params.set('location', filterLocation);//もしフィルターがあったらURLに場所を表示するためのコード
-    } else {//もしフィルターがなかったらURLに場所を表示しないためのコード
-      params.delete('location');//URLに場所を表示しないためのコード
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (filterLocation && filterLocation !== 'すべて') {
+      params.set('location', filterLocation);
+    } else {
+      params.delete('location');
     }
-    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');//絞り込みを反映して新しいURLを作成するためのコード
-    window.history.replaceState(null, '', newRelativePathQuery);//新しいURLをブラウザに反映するコード
+    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.replaceState(null, '', newRelativePathQuery);
   }, [filterLocation]);
 
   // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
-  const activePins = coords.filter(pin => pin.location === filterLocation);//選択中の階のピンを表示するコード
-  useEffect(() => {//表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択するためのコード
-    if (activePins.length > 0) {//もし表示中のピンがあったら
-      const exists = activePins.some(p => p.groupName === highlightedGroupName);//もし表示中のピンの中で、すでに強調表示されてるピンがあったら
-      if (!exists) {//もしそれらがなかったら
-        const sortedPins = [...activePins].sort((a, b) => {//選ばれたピンの中で、待ち時間が低い順に並べるコード
-          const getScore = (name: string) => {//待ち時間を数値化して比較するためのコード
-            const g = groups.find(item => item.name === name);//グループの中で、団体名が一致するものを探すコード
-            if (!g || !g.waitingTime) return 999;//待ち時間の入力ないやつを999にして下に追いやるコード
-            if (g.waitingTime === 'ー') return 0; //待ち時間が「ー」の場合は最優先で表示するために0を返す
-            const val = parseFloat(g.waitingTime);//待ち時間を数値に変換するコードparseFloatは文字列を数値に変換する関数
-            return isNaN(val) ? 999 : val;//もし数値に変換できなかったら999を返すコード
+  const activePins = coords.filter(pin => pin.location === filterLocation);
+  
+  useEffect(() => {
+    if (activePins.length > 0) {
+      const exists = activePins.some(p => p.groupName === highlightedGroupName);
+      if (!exists) {
+        const sortedPins = [...activePins].sort((a, b) => {
+          const getScore = (name: string) => {
+            const g = groups.find(item => item.name === name);
+            if (!g || !g.waitingTime) return 999;
+            if (g.waitingTime === 'ー') return 0; 
+            const val = parseFloat(g.waitingTime);
+            return isNaN(val) ? 999 : val;
           };
-          return getScore(a.groupName) - getScore(b.groupName);//待ち時間を比較して並び替え
+          return getScore(a.groupName) - getScore(b.groupName);
         });
 
-        setHighlightedGroupName(sortedPins[0].groupName);//最も待ち時間が少ない団体を強調するコード
+        setHighlightedGroupName(sortedPins[0].groupName);
       }
     } else {
       setHighlightedGroupName(null);
@@ -301,12 +302,7 @@ export default function App() {//Appというものを作り始める
           category: coordsCategoryMap["図書研究部"] || "展示"
         });
       }
-      // コンソールで折り紙研究会のデータの中身をピンポイントで確認
-      const origamiCoord = parsedCoords.find(c => c.groupName.includes("折り紙"));
-      console.log("折り紙研究会のピン情報:", origamiCoord);
-      // 属性をしぼらず、データそのままを出力してみる
-      const origamiGroup = groups.find(g => g.name.includes("折り紙"));
-      console.log("折り紙研究会の生データ:", origamiGroup);
+
       setGroups(mergedGroups);
     } catch (error) {
       console.error("データの取得に失敗しました:", error);
@@ -439,12 +435,16 @@ export default function App() {//Appというものを作り始める
               <span>🎯</span>
               <span>{measureMode ? '測定モードON' : '座標測定'}</span>
             </button> 
-            <button 
-              onClick={() => setShowGuide(!showGuide)} 
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 hover:bg-blue-100 transition active:scale-95"
-            >
-              <span>📖 使い方</span>
-            </button>
+           <button
+  onClick={() => {
+    setShowGuide(true);
+    // 画面の一番上までスムーズにスクロール
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }}
+  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs transition active:scale-95"
+>
+  📖 使い方
+</button>
             <button onClick={fetchData} disabled={loading} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50">
               <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
               <span>{loading ? '読込中...' : '更新'}</span>
@@ -492,49 +492,118 @@ export default function App() {//Appというものを作り始める
           </div>
         )}
 
-        {/* 📖 使い方ガイド */}
-        {showGuide && (
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b border-blue-200 pb-3">
-              <div className="flex items-center space-x-2">
-                <span className="text-xl">📖</span>
-                <h2 className="font-black text-base text-blue-900">使い方ガイド & 混雑度レベルについて</h2>
-              </div>
-              <button 
-                onClick={() => setShowGuide(false)}
-                className="text-xs font-bold text-blue-500 hover:text-blue-800 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-sm"
-              >
-                閉じる ✕
-              </button>
-            </div>
+       {/* 📖 使い方ガイド */}
+{showGuide && (
+  <div className="bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-slate-50 border-2 border-blue-200 rounded-2xl p-5 md:p-6 shadow-md space-y-5 animate-in fade-in duration-200">
+    
+    {/* ヘッダー */}
+    <div className="flex items-center justify-between border-b border-blue-200 pb-3">
+      <div className="flex items-center space-x-2.5">
+        <span className="text-2xl">📖</span>
+        <div>
+          <h2 className="font-black text-base md:text-lg text-blue-950">使い方ガイド & 混雑度目安</h2>
+          <p className="text-[11px] text-blue-600 font-medium">打越祭をスムーズに楽しむためのヒント</p>
+        </div>
+      </div>
+      <button 
+        onClick={() => setShowGuide(false)}
+        className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-white hover:bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 shadow-sm transition active:scale-95"
+      >
+        閉じる ✕
+      </button>
+    </div>
 
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">🔥 混雑度レベルのニュアンス目安</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-                <div className="bg-white p-2.5 rounded-xl border border-green-200 shadow-sm flex flex-col items-center text-center">
-                  <span className="font-black text-green-600 text-sm mb-0.5">レベル 1</span>
-                  <span className="font-bold text-slate-700">とても空いている</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-xl border border-green-300 shadow-sm flex flex-col items-center text-center">
-                  <span className="font-black text-green-600 text-sm mb-0.5">レベル 2</span>
-                  <span className="font-bold text-slate-700">かなり空いている</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-xl border border-orange-200 shadow-sm flex flex-col items-center text-center">
-                  <span className="font-black text-orange-500 text-sm mb-0.5">レベル 3</span>
-                  <span className="font-bold text-slate-700">問題なく回れる</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-xl border border-red-200 shadow-sm flex flex-col items-center text-center">
-                  <span className="font-black text-red-500 text-sm mb-0.5">レベル 4</span>
-                  <span className="font-bold text-slate-700">かなり混んでいる</span>
-                </div>
-                <div className="bg-white p-2.5 rounded-xl border border-red-400 shadow-sm flex flex-col items-center text-center">
-                  <span className="font-black text-red-700 text-sm mb-0.5">レベル 5</span>
-                  <span className="font-bold text-slate-700">とても混んでいる</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+    {/* 🌟 機能の使い方ステップ */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-sm flex items-start space-x-3">
+        <span className="text-2xl shrink-0">🗺️</span>
+        <div>
+          <h4 className="font-bold text-xs text-slate-800">1. マップで探す</h4>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+            エリアや階数を切り替えるとマップが表示されます。気になるピンをタップして詳細を確認できます。
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-sm flex items-start space-x-3">
+        <span className="text-2xl shrink-0">🔍</span>
+        <div>
+          <h4 className="font-bold text-xs text-slate-800">2. 検索・並び替え</h4>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+            「待ち時間順（低い順）」を選べば、今すぐ入れる空いている展示や企画をひと目で確認できます。
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white p-3.5 rounded-xl border border-blue-100 shadow-sm flex items-start space-x-3">
+        <span className="text-2xl shrink-0">🔄</span>
+        <div>
+          <h4 className="font-bold text-xs text-slate-800">3. リアルタイム更新</h4>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+            データは30秒ごとに自動更新されます。手動で確認したい場合は右上の「更新」をタップしてください。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {/* 🔥 混雑度レベルの目安 */}
+    <div className="space-y-2 pt-2 border-t border-blue-200/60">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1">
+          <span>🔥</span> 混雑度レベル（5段階）の目安
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
+        {/* レベル 1 */}
+        <div className="bg-white p-2.5 rounded-xl border border-green-300 shadow-sm flex flex-col items-center text-center hover:border-green-400 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-green-100 text-green-700 mb-1">
+            レベル 1
+          </span>
+          <span className="font-bold text-slate-800 text-xs">とても空いている</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">待ち時間なし・即入場</span>
+        </div>
+
+        {/* レベル 2 */}
+        <div className="bg-white p-2.5 rounded-xl border border-green-400 shadow-sm flex flex-col items-center text-center hover:border-green-500 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-green-100 text-green-700 mb-1">
+            レベル 2
+          </span>
+          <span className="font-bold text-slate-800 text-xs">かなり空いている</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">スムーズに閲覧可能</span>
+        </div>
+
+        {/* レベル 3 */}
+        <div className="bg-white p-2.5 rounded-xl border border-orange-300 shadow-sm flex flex-col items-center text-center hover:border-orange-400 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-100 text-orange-700 mb-1">
+            レベル 3
+          </span>
+          <span className="font-bold text-slate-800 text-xs">問題なく回れる</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">標準的な賑わい</span>
+        </div>
+
+        {/* レベル 4 */}
+        <div className="bg-white p-2.5 rounded-xl border border-red-300 shadow-sm flex flex-col items-center text-center hover:border-red-400 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 mb-1">
+            レベル 4
+          </span>
+          <span className="font-bold text-slate-800 text-xs">かなり混んでいる</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">少し待ち時間あり</span>
+        </div>
+
+        {/* レベル 5 */}
+        <div className="bg-white p-2.5 rounded-xl border border-red-500 shadow-sm flex flex-col items-center text-center col-span-2 sm:col-span-1 hover:border-red-600 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white mb-1">
+            レベル 5
+          </span>
+          <span className="font-bold text-slate-800 text-xs">とても混んでいる</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">長蛇の列・入場規制</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+)}
 
         {/* 検索・フィルターエリア */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
@@ -962,3 +1031,4 @@ export default function App() {//Appというものを作り始める
     </div>
   );
 }
+
