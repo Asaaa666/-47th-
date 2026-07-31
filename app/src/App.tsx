@@ -1,104 +1,103 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react'; 　// Reactというアプリを動かす基本機能の中でデータを管理するUsestateや、データを読み込むUseeffect,実際の画面を書くのに使うUseRefを導入する文　　
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";//このスプレットシートからデータを読み込むよという文
 
 interface Group {
-  name: string;
-  description: string;
-  location: string;
-  logo: string;
-  status: '更新済' | '未更新';
-  waitingTime: string;
-  comment: string;
-  lastUpdated: string;
-  category: string;
+  name: string; //団体名
+  description: string; //団体の説明
+  location: string; //何階にあるか
+  logo: string; //ロゴの画像
+  status: '更新済' | '未更新'; //更新されているかどうか
+  waitingTime: string; //５段階評価
+  comment: string; //コメント（没）
+  lastUpdated: string; //最終更新日時
+  category: string; //カテゴリー　これらをまとめて、Groupとして読み込むよという文
 }
 
-interface Coordinate {
-  groupName: string;
-  location: string;
-  x: number;
-  y: number;
-  category?: string;
+interface Coordinate { //マップに使う座標の取得
+  groupName: string; //団体名
+  location: string; //何階にあるか
+  x: number; //x座標
+  y: number; //y座標
+  category?: string; //カテゴリー
 }
 
 // ⏱️ 更新からの経過時間を計算する関数
-const getTimeAgo = (dateString: string): string => {
-  if (!dateString || dateString === "ー") return "";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "";
+const getTimeAgo = (dateString: string): string => {//更新日時の文字列を受け取る
+  if (!dateString || dateString === "ー") return "";//更新日時がない場合は空文字列を返す
+  const date = new Date(dateString); //文字列を新しい日付オブジェクトに変換する
+  if (isNaN(date.getTime())) return ""; //5段階評価がセルになかったら空を表示
 
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const now = new Date();//現在の日時を表示
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);//現在の日時と更新日時の差を秒単位で計算
 
-  if (diffInSeconds < 60) return "たった今";
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) return `${diffInMinutes}分前`;
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) return `${diffInHours}時間前`;
-  const diffInDays = Math.floor(diffInHours / 24);
-  return `${diffInDays}日前`;
+  if (diffInSeconds < 60) return "たった今";//1分以内ならたった今
+  const diffInMinutes = Math.floor(diffInSeconds / 60);//1分=60秒
+  if (diffInMinutes < 60) return `${diffInMinutes}分前`;//60分以内なら、分単位で表示
+  const diffInHours = Math.floor(diffInMinutes / 60); //1時間＝60分
+  if (diffInHours < 24) return `${diffInHours}時間前`;//24時間以内なら、時間単位で表示
+  const diffInDays = Math.floor(diffInHours / 24);//1日＝24時間
+  return `${diffInDays}日前`;//それ以降は日単位で表示
 };
 
-export default function App() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [coords, setCoords] = useState<Coordinate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+export default function App() {//Appというものを作り始める
+  const [groups, setGroups] = useState<Group[]>([]);//グループのデータを管理するためのスプレッドシートのデータを読み込むため,ひとまず空にしておいて読み込んだらSetgroupによってGroupの中に保存される
+  const [coords, setCoords] = useState<Coordinate[]>([]);//スプレットシートのcoordsから座標のデータをひとまず空にしておいてから入手、管理する
+  const [loading, setLoading] = useState(true);//データの読み込み中かどうかを管理するためのコード
+  const [searchTerm, setSearchTerm] = useState('');//検索語を管理するためのコード
   
-  const [filterLocation, setFilterLocation] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('location') || 'すべて';
-  });
+  const [filterLocation, setFilterLocation] = useState(() => {//場所の絞り込みを管理するためのコード、例えば場所を絞り込んでたら今どこに絞り込んでるかを保存する
+    const params = new URLSearchParams(window.location.search);//場所を選んでたりしたらちょっとURLを変える
+    return params.get('location') || 'すべて';//URLが場所の絞り込みをしてたらその場所を表示、してなかったらすべてを表示
+  });//閉じる
 
-  const [filterCategory, setFilterCategory] = useState<string>('すべて');
-  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
-  const [isOpen, setisOpen] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<string>('すべて');//絞り込み機能は場所だけじゃなくて、カテゴリーもやる、ひとまずはすべて
+  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');//待ち時間順、名前順、カテゴリ順がある、初期設定は待ち時間
+  const [isOpen, setisOpen] = useState(false);//絞り込みを閉じるに初期設定
   const [showGuide, setShowGuide] = useState(false); // 📖 使い方ガイドの開閉状態
 
   // 🎯 座標測定機能用のステート
-  const [measureMode, setMeasureMode] = useState(false);
-  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [measureMode, setMeasureMode] = useState(false);//本番の際は使わないがマップ作製の時に便利な座標測定モード、今年のやつ丸ごと引き継ぐなら使わなくてよし
+  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);//タップされたら座標を取得するためのコード
+  const [copiedText, setCopiedText] = useState<string | null>(null);//座標コピーできるためのコード,nullというのはコピーされてない状態、コピーされたらコードが反応するようにするためのコード
 
-  const [modalGroupName, setModalGroupName] = useState<string | null>(null);
-  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
+  const [modalGroupName, setModalGroupName] = useState<string | null>(null);//モーダルで表示する団体名を管理するためのコード、モーダルとは、画面の上にポップアップで表示されるウィンドウのこと
+  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);//マップ上で強調表示する団体を管理するためのコード、ひとまず空
 
-  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);
+  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);//マップ上で特定の団体にスクロールするためのコード、最初は空
 
-  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);//マップまでスクロールするためのコード、マップができるまでは空
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (filterLocation && filterLocation !== 'すべて') {
-      params.set('location', filterLocation);
-    } else {
-      params.delete('location');
+  useEffect(() => {//変化があったら処理を行うためのコード
+    const params = new URLSearchParams(window.location.search);//URLで絞り込みしてるかを確認するためのコード
+    if (filterLocation && filterLocation !== 'すべて') {//もしフィルターがなかったらすべて
+      params.set('location', filterLocation);//もしフィルターがあったらURLに場所を表示するためのコード
+    } else {//もしフィルターがなかったらURLに場所を表示しないためのコード
+      params.delete('location');//URLに場所を表示しないためのコード
     }
-    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.replaceState(null, '', newRelativePathQuery);
+    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');//絞り込みを反映して新しいURLを作成するためのコード
+    window.history.replaceState(null, '', newRelativePathQuery);//新しいURLをブラウザに反映するコード
   }, [filterLocation]);
 
   // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
-  const activePins = coords.filter(pin => pin.location === filterLocation);
-  
-  useEffect(() => {
-    if (activePins.length > 0) {
-      const exists = activePins.some(p => p.groupName === highlightedGroupName);
-      if (!exists) {
-        const sortedPins = [...activePins].sort((a, b) => {
-          const getScore = (name: string) => {
-            const g = groups.find(item => item.name === name);
-            if (!g || !g.waitingTime) return 999;
-            if (g.waitingTime === 'ー') return 0; 
-            const val = parseFloat(g.waitingTime);
-            return isNaN(val) ? 999 : val;
+  const activePins = coords.filter(pin => pin.location === filterLocation);//選択中の階のピンを表示するコード
+  useEffect(() => {//表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択するためのコード
+    if (activePins.length > 0) {//もし表示中のピンがあったら
+      const exists = activePins.some(p => p.groupName === highlightedGroupName);//もし表示中のピンの中で、すでに強調表示されてるピンがあったら
+      if (!exists) {//もしそれらがなかったら
+        const sortedPins = [...activePins].sort((a, b) => {//選ばれたピンの中で、待ち時間が低い順に並べるコード
+          const getScore = (name: string) => {//待ち時間を数値化して比較するためのコード
+            const g = groups.find(item => item.name === name);//グループの中で、団体名が一致するものを探すコード
+            if (!g || !g.waitingTime) return 999;//待ち時間の入力ないやつを999にして下に追いやるコード
+            if (g.waitingTime === 'ー') return 0; //待ち時間が「ー」の場合は最優先で表示するために0を返す
+            const val = parseFloat(g.waitingTime);//待ち時間を数値に変換するコードparseFloatは文字列を数値に変換する関数
+            return isNaN(val) ? 999 : val;//もし数値に変換できなかったら999を返すコード
           };
-          return getScore(a.groupName) - getScore(b.groupName);
+          return getScore(a.groupName) - getScore(b.groupName);//待ち時間を比較して並び替え
         });
 
-        setHighlightedGroupName(sortedPins[0].groupName);
+        setHighlightedGroupName(sortedPins[0].groupName);//最も待ち時間が少ない団体を強調するコード
       }
     } else {
       setHighlightedGroupName(null);
@@ -302,7 +301,12 @@ export default function App() {
           category: coordsCategoryMap["図書研究部"] || "展示"
         });
       }
-
+      // コンソールで折り紙研究会のデータの中身をピンポイントで確認
+      const origamiCoord = parsedCoords.find(c => c.groupName.includes("折り紙"));
+      console.log("折り紙研究会のピン情報:", origamiCoord);
+      // 属性をしぼらず、データそのままを出力してみる
+      const origamiGroup = groups.find(g => g.name.includes("折り紙"));
+      console.log("折り紙研究会の生データ:", origamiGroup);
       setGroups(mergedGroups);
     } catch (error) {
       console.error("データの取得に失敗しました:", error);
