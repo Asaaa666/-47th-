@@ -514,22 +514,22 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans pb-12">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center space-x-3 min-w-0">
             <img 
               src="/logo.jpg" 
               alt="打越祭ロゴ" 
-              className="w-10 h-10 object-contain rounded-xl shadow-md"
+              className="w-10 h-10 object-contain rounded-xl shadow-md shrink-0"
             />
-            <div>
-              <h1 className="font-black text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">打越祭リアルタイム混雑サイト</h1>
+            <div className="min-w-0">
+              <h1 className="font-black text-base sm:text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent leading-tight">打越祭リアルタイム混雑サイト</h1>
               <p className="text-[10px] text-slate-400 font-medium -mt-0.5">Live Traffic & Activity Monitor</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-                     <button
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
               onClick={() => setMeasureMode(!measureMode)}
-              className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 ${
+              className={`flex items-center justify-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 whitespace-nowrap ${
                 measureMode 
                   ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300' 
                   : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
@@ -537,18 +537,17 @@ export default function App() {
             >
               <span>🎯</span>
               <span>{measureMode ? '測定モードON' : '座標測定'}</span>
-            </button> 
-           <button
-  onClick={() => {
-    setShowGuide(true);
-    // 画面の一番上までスムーズにスクロール
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }}
-  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs transition active:scale-95"
->
-  📖 使い方
-</button>
-            <button onClick={fetchData} disabled={loading} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50">
+            </button>
+            <button
+              onClick={() => {
+                setShowGuide(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs transition active:scale-95 whitespace-nowrap"
+            >
+              📖 使い方
+            </button>
+            <button onClick={fetchData} disabled={loading} className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50 whitespace-nowrap">
               <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
               <span>{loading ? '読込中...' : '更新'}</span>
             </button>
