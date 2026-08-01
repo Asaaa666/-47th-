@@ -23,6 +23,58 @@ interface Coordinate {
   category?: string;
 }
 
+const LOGO_ALIAS_MAP: Record<string, string[]> = {
+  "生物部": ["/seibutsu.png"],
+  "図書研究部": ["/tosyo_kenkyu.png"],
+  "浅野学園生徒会": ["/asano_seitokai.png"],
+  "生徒会": ["/asano_seitokai.png"],
+  "図書委員会古本バザー": ["/furuhon_bazaar.png"],
+  "古本バザー": ["/furuhon_bazaar.png"],
+  "焼きすぎて麺！": ["/yakisugi.png"],
+  "ポテトヘッド": ["/potatohead.png"],
+  "神兵衛": ["/jinbee.png"],
+  "りすのおうち": ["/risu_house.png"],
+  "アサノ大全": ["/asano_taizen.png"],
+  "クイズ研究部": ["/quiz.png"],
+  "ホラー展": ["/horror.png"],
+  "物理部展2026": ["/butsuri2026.png"],
+  "地学部プラネタリウム": ["/chigaku_planetarium.png"],
+  "地学部展示": ["/chigaku_tenji.png"],
+  "Cooland": ["/cooland.png"],
+  "AMERICAN CAFE BEN&KEN": ["/ben_ken.png"],
+  "中学野球部": ["/chugaku_yakyu.jpeg"],
+  "折り紙研究会": ["/origami.png"],
+  "喰いコミュニケーションXXIV": ["/kui_com.jpg"],
+  "団GO!": ["/dango.png"],
+  "中２学年参加": ["/chu2_gakunen.png"],
+  "中１学年参加": ["/chu1_gakunen.png"],
+  "お化け屋敷": ["/obake_yashiki.png"],
+  "レーザータグ": ["/lasertag.png"],
+  "総務部門": ["/soumu.png"],
+  "装飾部門": ["/soushoku.png"],
+  "浅野同窓会": ["/asano_dousoukai.png"],
+  "賛助会": ["/sanjokai.png"],
+  "涼水": ["/ryosui.png"],
+  "ARCHERz": ["/archerz.jpg"],
+  "数学同好会": ["/suugaku.png"],
+  "びりやーど研究会": ["/billiard.png"],
+  "歴史研究部": ["/rekishi.png"],
+  "鉃道研究部": ["/tetsudou.png"],
+  "美術部展": ["/bijutsu.png"],
+  "化学部": ["/kagaku.png"],
+  "的に当てろ屋": ["/matoni_atero.jpg"],
+  "書道部": ["/shodou.png"],
+  "棋道部": ["/kidou.png"],
+  "登山部": ["/tozambu.png"],
+  "スクラム食堂": ["/scrum_shokudou.png"],
+  "KCC": ["/kcc.png"],
+  "浅野学園吹奏楽部": ["/浅野学園吹奏楽部_ロゴ.jpg"],
+  "演劇部": ["/演劇部_ロゴ.png"],
+  "Juggling Art Asano": ["/Juggling Art Asano_ロゴ.png_"],
+  "Zepp Asano": ["/Zepp Asano_ロゴ.png"],
+  "Melon Frappe Jazz Orchestra": ["/Melon Frappe Jazz Orchestra_ロゴ.png"],
+};
+
 // ⏱️ 更新からの経過時間を計算する関数
 const getTimeAgo = (dateString: string): string => {
   if (!dateString || dateString === "ー") return "";
@@ -146,49 +198,100 @@ export default function App() {
   };
 
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
-    const filenames: string[] = [];
-    const name = groupName.trim();
-
-    if (originalLogo) {
-      filenames.push(originalLogo.trim());
-    }
-
-    const clean = name.replace(/\s+/g, '');
-    filenames.push(`${name}_ロゴ.png`, `${name} ロゴ.png`, `${name}.png`, `${clean}_ロゴ.png`, `${name}_ロゴ.jpg`, `${name}.jpeg`);
-
     const urls: string[] = [];
-    filenames.forEach(fn => {
-      if (!fn) return;
-      urls.push('/' + fn.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F'));
-      urls.push('/' + encodeURIComponent(fn));
-      urls.push('/' + fn);
+    const addCandidate = (value: string) => {
+      if (!value) return;
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');
+      const withSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;
+      const variants = [withSlash, trimmed, `/${encodeURIComponent(trimmed)}`];
+      variants.forEach(v => {
+        if (!urls.includes(v)) urls.push(v);
+      });
+    };
+
+    const name = (groupName || '').trim();
+    const original = (originalLogo || '').trim();
+
+    const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);
+    directKeys.forEach(key => {
+      const aliases = LOGO_ALIAS_MAP[key];
+      if (aliases?.length) {
+        aliases.forEach(alias => addCandidate(alias));
+      }
     });
 
-    return Array.from(new Set(urls));
+    if (original) addCandidate(original);
+
+    const clean = name.replace(/\s+/g, '');
+    [
+      `${name}.png`,
+      `${name}.jpg`,
+      `${name}.jpeg`,
+      `${name}_ロゴ.png`,
+      `${name} ロゴ.png`,
+      `${clean}_ロゴ.png`,
+      `${clean}.png`,
+      `${clean}.jpg`,
+      `${name}_ロゴ.jpg`
+    ].forEach(addCandidate);
+
+    return urls;
   };
 
   const handleLogoError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const img = e.target as HTMLImageElement;
     const candidatesStr = img.getAttribute('data-candidates');
     if (!candidatesStr) return;
+
     try {
-      const candidates = JSON.parse(candidatesStr);
+      const candidates: string[] = JSON.parse(candidatesStr);
       const currentIdx = parseInt(img.getAttribute('data-index') || '0', 10);
-      if (currentIdx < candidates.length - 1) {
-        const nextIdx = currentIdx + 1;
-        img.setAttribute('data-index', nextIdx.toString());
-        img.src = candidates[nextIdx];
-      } else {
-        img.style.display = 'none';
-        const parent = img.parentElement;
-        if (parent && !parent.querySelector('.fallback-text')) {
-          const textDiv = document.createElement('div');
-          textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
-          textDiv.innerText = '祭';
-          parent.appendChild(textDiv);
+      const maxAttemptsPerCandidate = 2;
+
+      const tryCandidate = (idx: number, attempt: number) => {
+        if (idx >= candidates.length) {
+          img.style.display = 'none';
+          const parent = img.parentElement;
+          if (parent && !parent.querySelector('.fallback-text')) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
+            textDiv.innerText = '祭';
+            parent.appendChild(textDiv);
+          }
+          return;
         }
-      }
-    } catch (err) { console.error(err); }
+
+        const candidate = candidates[idx];
+        const probe = new Image();
+        const finish = () => {
+          probe.onload = null;
+          probe.onerror = null;
+        };
+
+        probe.onload = () => {
+          finish();
+          img.setAttribute('data-index', idx.toString());
+          img.src = candidate;
+        };
+
+        probe.onerror = () => {
+          finish();
+          if (attempt < maxAttemptsPerCandidate) {
+            setTimeout(() => tryCandidate(idx, attempt + 1), 150 * (attempt + 1));
+          } else {
+            tryCandidate(idx + 1, 0);
+          }
+        };
+
+        probe.src = candidate;
+      };
+
+      tryCandidate(currentIdx, 0);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const getMapImagePath = (buttonName: string): string | null => {
