@@ -530,7 +530,7 @@ export default function App() {//アプリを動かすためのコード
             />
             <div className="min-w-0">
               <h1 className="font-black text-base sm:text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent leading-tight">打越祭リアルタイム混雑サイト</h1>
-              <p className="text-[10px] text-slate-400 font-medium -mt-0.5">Live Traffic & Activity Monitor</p>
+              <p className="text-[10px] text-slate-400 font-medium -mt-0.5">打越祭をもっと快適に</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
