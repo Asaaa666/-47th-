@@ -182,41 +182,41 @@ export default function App() {//アプリを動かすためのコード
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {//マップ画像がクリックされたときに呼び出される関数です。クリックイベントを引数に取ります。クリックイベントはユーザーがマップをクリックしたときのこと。引数とはわかりやすく言うと、関数に渡す情報のこと。
     if (!measureMode) return;//測定モードがオフの場合は何もしない
 
-    const rect = e.currentTarget.getBoundingClientRect();//
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const rect = e.currentTarget.getBoundingClientRect();//マップの大きさを取得します。
+    const clickX = e.clientX - rect.left;//クリックされた位置のX座標を取得する
+    const clickY = e.clientY - rect.top;//クリックされた位置のY座標を取得する
 
-    const xPercent = parseFloat(((clickX / rect.width) * 100).toFixed(1));
-    const yPercent = parseFloat(((clickY / rect.height) * 100).toFixed(1));
+    const xPercent = parseFloat(((clickX / rect.width) * 100).toFixed(1));//クリックされた位置のX座標をパーセンテージに変換して小数点1桁に丸める
+    const yPercent = parseFloat(((clickY / rect.height) * 100).toFixed(1));//クリックされた位置のY座標をパーセンテージに変換して小数点1桁に丸める
 
-    setClickedCoord({ x: xPercent, y: yPercent });
+    setClickedCoord({ x: xPercent, y: yPercent });//クリックされた座標を保存する
   };
 
   // 📋 クリップボードコピー処理
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = (text: string, label: string) => {//クリップボードにコピーする関数です。textはコピーする文字列、labelはコピーしたことを示すラベルです。
+    navigator.clipboard.writeText(text);//クリップボードにコピーする
     setCopiedText(label);
-    setTimeout(() => setCopiedText(null), 2000);
+    setTimeout(() => setCopiedText(null), 2000);//2秒後にコピーしたことを示すラベルを消す
   };
 
   // 画像の読み込み候補を作る。
   // まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試す。
-  const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
-    const urls: string[] = [];
-    const addCandidate = (value: string) => {
-      if (!value) return;
-      const trimmed = value.trim();
-      if (!trimmed) return;
-      const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');
-      const withSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;
-      const variants = [withSlash, trimmed, `/${encodeURIComponent(trimmed)}`];
-      variants.forEach(v => {
-        if (!urls.includes(v)) urls.push(v);
+  const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {//オリジナルのロゴ画像のURLと団体名を受け取り、画像の読み込み候補を作る関数です。まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試します。
+    const urls: string[] = [];//画像の読み込み候補を格納する配列です。
+    const addCandidate = (value: string) => {//画像の読み込み候補を追加する関数です。valueは追加する候補の文字列です。
+      if (!value) return;//valueが空文字の場合は何もしない
+      const trimmed = value.trim();//valueの前後の空白を削除する
+      if (!trimmed) return;//trimmedが空文字の場合は何もしない
+      const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
+      const withSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;//先頭に/がついていない場合はつける
+      const variants = [withSlash, trimmed, `/${trimmed}`];//候補のバリエーションを作る。
+      variants.forEach(v => {//様々な候補を追加する。
+        if (!urls.includes(v)) urls.push(v);//urlsに含まれていない場合は追加する
       });
     };
 
-    const name = (groupName || '').trim();
-    const original = (originalLogo || '').trim();
+    const name = (groupName || '').trim();//団体名の前後の空白を削除する
+    const original = (originalLogo || '').trim();//オリジナルのロゴ画像のURLの前後の空白を削除する
 
     const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);
     directKeys.forEach(key => {
@@ -534,17 +534,19 @@ export default function App() {//アプリを動かすためのコード
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              onClick={() => setMeasureMode(!measureMode)}
-              className={`flex items-center justify-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 whitespace-nowrap ${
-                measureMode 
-                  ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300' 
-                  : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-              }`}
-            >
-              <span>🎯</span>
-              <span>{measureMode ? '測定モードON' : '座標測定'}</span>
-            </button>
+            {false && (
+              <button
+                onClick={() => setMeasureMode(!measureMode)}
+                className={`flex items-center justify-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition active:scale-95 whitespace-nowrap ${
+                  measureMode 
+                    ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300' 
+                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                <span>🎯</span>
+                <span>{measureMode ? '測定モードON' : '座標測定'}</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 setShowGuide(true);
