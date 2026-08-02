@@ -149,40 +149,40 @@ export default function App() {//アプリを動かすためのコード
             const val = parseFloat(g.waitingTime);//待ち時間を数値に変換します。
             return isNaN(val) ? 999 : val;//待ち時間が数値に変換できない場合は、999を返します。(一番下に表示されるようにするため)
           };
-          return getScore(a.groupName) - getScore(b.groupName);
+          return getScore(a.groupName) - getScore(b.groupName);//待ち時間の差を計算します。
         });
 
-        setHighlightedGroupName(sortedPins[0].groupName);
+        setHighlightedGroupName(sortedPins[0].groupName);//もっとも待ち時間が低い団体をハイライトします。sortPins[0]は、待ち時間の低い順にソートされた配列の最初の団体です。
       }
-    } else {
-      setHighlightedGroupName(null);
+    } else {//ピンがない画面の時は↓
+      setHighlightedGroupName(null);//ハイライト団体をnull(なし)にします
     }
-  }, [filterLocation, coords, groups]);
+  }, [filterLocation, coords, groups]);//これをピンが変わるたびに実装します
 
   // 場所切り替え時に測定座標をリセット
-  useEffect(() => {
-    setClickedCoord(null);
-  }, [filterLocation]);
+  useEffect(() => {//ハイライト団体を表示してるかが変更されるごとに以下が実行されます
+    setClickedCoord(null);//測定座標（クリックされた座標）をリセットします
+  }, [filterLocation]);//何階を表示してるかが変更されるごとに実行、二個上のやつとの違いは、二個上のやつはピンが変わるたびに発動し、効果範囲はハイライト団体の変更、こっちは何階を表示してるか、が変更されるごとに発動し、効果範囲は測定座標のリセットです。
 
   // 下部カードクリック時のみマップへスムーズスクロール
-  useEffect(() => {
-    if (!pendingScroll) return;
+  useEffect(() => {//場所の絞り込み、ハイライト団体の変更があるときマップにスクロールするためのプログラム外貨
+    if (!pendingScroll) return;//もしpendingScroll(保留中のスクロール、これはピンをクリックしたときに発動する)がnull(なし)なら何もしない
 
-    const timer = setTimeout(() => {
-      if (pendingScroll.type === 'map' && mapContainerRef.current) {
-        mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setPendingScroll(null);
+    const timer = setTimeout(() => {//timerを設定して、一定時間たったら以下の処理を実行、なぜわざわざタイマーを用意するかというと、マップの描画が完了する前にスクロールしようとすると、スクロール位置が正しく計算されないことがあるためです。タイマーを使って、マップの描画が完了するまで待つことで、正しいスクロール位置に移動できるようにしています。
+      if (pendingScroll.type === 'map' && mapContainerRef.current) {//もし団体のカードを押し、マップの描画が完了してる場合は以下を実行
+        mapContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });//マップコンテナをスムーズにスクロールして、画面の中央に表示するようにします。behavior: 'smooth'は、スクロールをスムーズに行うためのオプションです。block: 'center'は、スクロール先の要素を画面の中央に表示するためのオプションです。
+        setPendingScroll(null);//スクロールが完了したら、pendingScrollをnull(なし)にします。これにより、次回のスクロールが保留されることを防ぎます。
       }
     }, 120);
 
-    return () => clearTimeout(timer);
-  }, [filterLocation, pendingScroll]);
+    return () => clearTimeout(timer);//処理が終わったら、タイマーをクリアして、不要な処理が残らないようにします。これにより、コンポーネントがアンマウントされたり、依存関係が変更された場合に、タイマーが残ってしまうことを防ぎます。
+  }, [filterLocation, pendingScroll]);//filterLocation(何階を表示してるか)とpendingScroll(保留中のスクロール)が変更されるたびに実行されます。
 
-  // 🎯 マップ画像クリック時の座標計算ハンドラ
-  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!measureMode) return;
+  // 🎯 マップ画像クリック時の座標計算ハンドラ(測定モードの話なので新規マップ追加の時以外は見なくてよし)
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {//マップ画像がクリックされたときに呼び出される関数です。クリックイベントを引数に取ります。クリックイベントはユーザーがマップをクリックしたときのこと。引数とはわかりやすく言うと、関数に渡す情報のこと。
+    if (!measureMode) return;//測定モードがオフの場合は何もしない
 
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();//
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
