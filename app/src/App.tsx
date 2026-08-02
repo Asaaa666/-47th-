@@ -1,29 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';//アプリを動かす使うUseStateやUseEffectなどのフックを導入
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";//読み込むスプレットシートを選択するコード
 
-interface Group {
-  name: string;
-  description: string;
-  location: string;
-  logo: string;
-  status: '更新済' | '未更新';
-  waitingTime: string;
-  comment: string;
-  lastUpdated: string;
-  category: string;
+interface Group {//団体の情報を格納するためのインターフェース
+  name: string;//団体名
+  description: string;//団体の説明
+  location: string;//団体の場所
+  logo: string;//団体のロゴ画像のURL
+  status: '更新済' | '未更新';//団体の情報が更新されているかどうかのステータス
+  waitingTime: string;//団体の待ち時間
+  comment: string;//団体に関するコメント(削除済み)
+  lastUpdated: string;//団体の情報が最後に更新された日時
+  category: string;//団体のカテゴリ(展示、屋台、ステージなど)
 }
 
-interface Coordinate {
-  groupName: string;
-  location: string;
-  x: number;
-  y: number;
-  category?: string;
+interface Coordinate {//団体の座標情報を格納するためのインターフェース
+  groupName: string;//団体名
+  location: string;//団体の場所
+  x: number;//団体の座標X
+  y: number;//団体の座標Y
+  category?: string;//団体のカテゴリ(展示、屋台、ステージなど)
 }
 
-const LOGO_ALIAS_MAP: Record<string, string[]> = {
+// ロゴ読み込み用のエイリアス表。
+// 団体名や既存のファイル名から、実際に public 配下に存在する画像へ正しく到達させるためのマッピングです。
+const LOGO_ALIAS_MAP: Record<string, string[]> = {// 団体名や既存のファイル名をキーにして、実際の画像パスの候補を配列で指定、ロゴが新しくなった場合はここに流れに沿って書き加えてください。この工程を踏むことによってロゴが正しく表示されるようになります。
   "生物部": ["/seibutsu.png"],
   "図書研究部": ["/tosyo_kenkyu.png"],
   "浅野学園生徒会": ["/asano_seitokai.png"],
@@ -76,76 +78,76 @@ const LOGO_ALIAS_MAP: Record<string, string[]> = {
 };
 
 // ⏱️ 更新からの経過時間を計算する関数
-const getTimeAgo = (dateString: string): string => {
-  if (!dateString || dateString === "ー") return "";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "";
+const getTimeAgo = (dateString: string): string => {//　更新日時の文字列を受け取り、現在時刻との差を計算して「たった今」「〇分前」「〇時間前」「〇日前」といった形式で返す関数です。
+  if (!dateString || dateString === "ー") return "";//日付文字列が空または「ー」の場合は空文字を返す
+  const date = new Date(dateString);//日付文字列をDateオブジェクトに変換
+  if (isNaN(date.getTime())) return "";//日付が無効な場合は空文字を返す
 
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const now = new Date();//現在時刻を取得
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);//現在時刻と更新日時の差を秒単位で計算
 
-  if (diffInSeconds < 60) return "たった今";
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) return `${diffInMinutes}分前`;
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) return `${diffInHours}時間前`;
-  const diffInDays = Math.floor(diffInHours / 24);
-  return `${diffInDays}日前`;
+  if (diffInSeconds < 60) return "たった今";//60秒未満なら「たった今」と表示
+  const diffInMinutes = Math.floor(diffInSeconds / 60);//60秒以上なら分単位で計算
+  if (diffInMinutes < 60) return `${diffInMinutes}分前`;// 60分未満なら「〇分前」と表示
+  const diffInHours = Math.floor(diffInMinutes / 60);// 60分以上なら時間単位で計算
+  if (diffInHours < 24) return `${diffInHours}時間前`;// 24時間未満なら「〇時間前」と表示
+  const diffInDays = Math.floor(diffInHours / 24);// 24時間以上なら日単位で計算
+  return `${diffInDays}日前`;// 7日以上なら「〇日前」と表示
 };
 
-export default function App() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [coords, setCoords] = useState<Coordinate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+export default function App() {//アプリを動かすためのコード
+  const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
+  const [coords, setCoords] = useState<Coordinate[]>([]);//setCoordsとは、座標の情報を格納するためのステート変数です。初期値は空の配列です。
+  const [loading, setLoading] = useState(true);//setLoadingとは、データの読み込み中かどうかを示すためのステート変数です。初期値はtrueです。
+  const [searchTerm, setSearchTerm] = useState('');//setSearchTermとは、検索キーワードを格納するためのステート変数です。初期値は空文字です。ステート変数とは、Reactコンポーネント内で状態を管理するための変数です。useStateフックを使って定義されます。useStateフックとは、Reactで状態を管理するためのフックです。useStateフックを使うことで、コンポーネント内で状態を持つことができます。useStateフックは、初期値を引数に取り、現在の状態と状態を更新するための関数を返します。
   
-  const [filterLocation, setFilterLocation] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('location') || 'すべて';
+  const [filterLocation, setFilterLocation] = useState(() => {//setFilterLocationとは、場所のフィルターを格納するためのステート変数です。初期値はURLのクエリパラメータから取得されます。
+    const params = new URLSearchParams(window.location.search);//URLに場所の指定がある場合はその値を取得し、ない場合は「すべて」を初期値として設定します。
+    return params.get('location') || 'すべて';//選択されてなかったら「すべて」を初期値として設定します。
   });
 
-  const [filterCategory, setFilterCategory] = useState<string>('すべて');
-  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');
-  const [isOpen, setisOpen] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<string>('すべて');//eカテゴリのフィルターのための変数です。初期値は「すべて」です。
+  const [sortBy, setSortBy] = useState<'waiting' | 'name' | 'category'>('waiting');//待ち時間、名前、カテゴリのいずれかでソートするための変数です。初期値は「waiting」です。
+  const [isOpen, setisOpen] = useState(false);//モーダルの開閉を管理するための変数です。初期値はfalse（閉じてる）です。
   const [showGuide, setShowGuide] = useState(false); // 📖 使い方ガイドの開閉状態
 
   // 🎯 座標測定機能用のステート
-  const [measureMode, setMeasureMode] = useState(false);
-  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [measureMode, setMeasureMode] = useState(false);//測定モードのオンオフを管理
+  const [clickedCoord, setClickedCoord] = useState<{ x: number; y: number } | null>(null);//クリックされた座標を管理するためのステート（コード）。初期値はnull(なし）で、クリックされると{x: number, y: number}の形式で座標が格納されます。
+  const [copiedText, setCopiedText] = useState<string | null>(null);//コピーされたテキストを管理するためのステート。初期値はnullで、コピーされると文字列が格納されます。
 
-  const [modalGroupName, setModalGroupName] = useState<string | null>(null);
-  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);
+  const [modalGroupName, setModalGroupName] = useState<string | null>(null);//モーダルで表示する団体名を管理するためのステート。初期値はnullで、モーダルが開かれると団体名が格納されます。
+  const [highlightedGroupName, setHighlightedGroupName] = useState<string | null>(null);//マップ上でハイライト表示する団体名を管理するためのステート。初期値はnullで、ハイライトされると団体名が格納されます。
 
-  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);
+  const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);//マップへのスクロールが保留されているかどうかを管理するためのステート。初期値はnullで、スクロールが保留されると{type: 'map', groupName: string}の形式で情報が格納されます。
 
-  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);//マップコンテナの参照を保持するためのuseRefフック。初期値はnullで、マップコンテナがレンダリングされるとHTMLDivElementの参照が格納されます。
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (filterLocation && filterLocation !== 'すべて') {
-      params.set('location', filterLocation);
+  useEffect(() => {//URLを更新するためのuseEffectフック。filterLocationが変更されるたびに実行されます。
+    const params = new URLSearchParams(window.location.search);//URLSearchParamsオブジェクトを作成し、現在のURLのクエリパラメータを取得します。URLSearchParamsオブジェクトは、URLのクエリパラメータを操作するための便利なAPIです。
+    if (filterLocation && filterLocation !== 'すべて') {//filterLocationが「すべて」以外の場合は、URLのクエリパラメータにlocationを追加します。
+      params.set('location', filterLocation);//URLのクエリパラメータにlocationを追加します。params.set()メソッドは、指定されたキーと値のペアをURLSearchParamsオブジェクトに設定します。すでに同じキーが存在する場合は、その値を上書きします。
     } else {
-      params.delete('location');
+      params.delete('location');//URLのクエリパラメータからlocationを削除します。params.delete()メソッドは、指定されたキーをURLSearchParamsオブジェクトから削除します。
     }
-    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.replaceState(null, '', newRelativePathQuery);
-  }, [filterLocation]);
+    const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');//新しいURLのパスとクエリパラメータを作成します。window.location.pathnameは、現在のURLのパス部分を取得します。params.toString()は、URLSearchParamsオブジェクトを文字列に変換します。クエリパラメータが存在する場合は、'?'を付けて結合します。
+    window.history.replaceState(null, '', newRelativePathQuery);//ブラウザの履歴を置き換えます。window.history.replaceState()メソッドは、現在の履歴エントリを新しい状態に置き換えます。これにより、ページのリロードや戻るボタンの挙動に影響を与えずにURLを更新できます。
+  }, [filterLocation]);//filterLocationが変更されるたびに実行されます。
 
   // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
-  const activePins = coords.filter(pin => pin.location === filterLocation);
+  const activePins = coords.filter(pin => pin.location === filterLocation);//現在のフィルターに一致する座標を取得します。
   
-  useEffect(() => {
-    if (activePins.length > 0) {
-      const exists = activePins.some(p => p.groupName === highlightedGroupName);
-      if (!exists) {
-        const sortedPins = [...activePins].sort((a, b) => {
-          const getScore = (name: string) => {
-            const g = groups.find(item => item.name === name);
-            if (!g || !g.waitingTime) return 999;
-            if (g.waitingTime === 'ー') return 0; 
-            const val = parseFloat(g.waitingTime);
-            return isNaN(val) ? 999 : val;
+  useEffect(() => {//activePinsが変更されるたびに実行されます。
+    if (activePins.length > 0) {//activePinsが1つ以上存在する場合は、最も待ち時間が低い団体を自動選択します。
+      const exists = activePins.some(p => p.groupName === highlightedGroupName);//現在のハイライト団体がactivePinsに存在するかどうかを確認します。
+      if (!exists) {//現在のハイライト団体がactivePinsに存在しない場合は、最も待ち時間が低い団体を自動選択します。
+        const sortedPins = [...activePins].sort((a, b) => {//activePinsをコピーして、待ち時間の低い順にソートします。
+          const getScore = (name: string) => {//団体名から待ち時間を取得する関数です。
+            const g = groups.find(item => item.name === name);//団体名に一致するグループを検索します。
+            if (!g || !g.waitingTime) return 999;//グループが存在しない場合や待ち時間が存在しない場合は、999を返します。(一番下に表示されるようにするため)
+            if (g.waitingTime === 'ー') return 0; // 待ち時間が「ー」の場合は、0を返します。(一番上に表示されるようにするため)
+            const val = parseFloat(g.waitingTime);//待ち時間を数値に変換します。
+            return isNaN(val) ? 999 : val;//待ち時間が数値に変換できない場合は、999を返します。(一番下に表示されるようにするため)
           };
           return getScore(a.groupName) - getScore(b.groupName);
         });
@@ -197,6 +199,8 @@ export default function App() {
     setTimeout(() => setCopiedText(null), 2000);
   };
 
+  // 画像の読み込み候補を作る。
+  // まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試す。
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {
     const urls: string[] = [];
     const addCandidate = (value: string) => {
@@ -240,6 +244,8 @@ export default function App() {
     return urls;
   };
 
+  // 画像読み込みに失敗したときのフォールバック処理。
+  // 1回失敗してもすぐに祭表示にしないで、同じ候補を数回だけ再試行する。
   const handleLogoError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const img = e.target as HTMLImageElement;
     const candidatesStr = img.getAttribute('data-candidates');
@@ -330,6 +336,7 @@ export default function App() {
     return 'other_fallback'; 
   };
 
+  // GAS から団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する。
   const fetchData = async () => {
     try {
       setLoading(true);
