@@ -81,6 +81,125 @@ const PUBLIC_LOGO_ASSET_URLS = Object.values(
   import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
 ).filter(Boolean);
 
+const logoResolutionCacheRef = { current: {} as Record<string, string | null> };
+const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };
+
+const isAbsoluteLogoReference = (value: string): boolean => {//ロゴ候補が http(s) や data などの絶対参照かどうかを判定する関数です。
+  const trimmed = value.trim();
+  return /^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed);
+};
+
+const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {//オリジナルのロゴ画像のURLと団体名を受け取り、画像の読み込み候補を作る関数です。まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試します。
+  const urls: string[] = [];//画像の読み込み候補を格納する配列です。
+  const addCandidate = (value: string) => {//画像の読み込み候補を追加する関数です。valueは追加する候補の文字列です。
+    if (!value) return;//valueが空文字の場合は何もしない
+    const trimmed = value.trim();//valueの前後の空白を削除する
+    if (!trimmed) return;//trimmedが空文字の場合は何もしない
+    const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
+    const absolute = isAbsoluteLogoReference(normalized);
+    const variants = [normalized];
+    if (!absolute) {
+      variants.push(`/${normalized.replace(/^\/+/, '')}`);
+      variants.push(`/${normalized.replace(/^\/+/, '')}`.replace(/^\//, ''));
+    }
+    variants.forEach(v => {//様々な候補を追加する。
+      if (!urls.includes(v)) urls.push(v);//urlsに含まれていない場合は追加する
+    });
+  };
+
+  const addPublicAssetMatches = (value: string) => {// public 配下に存在する画像のうち、名前やファイル名に一致するものを優先して候補に加える関数です。
+    const trimmed = (value || '').trim();
+    if (!trimmed) return;
+    const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;
+    const baseName = rawName.replace(/\.[^.]+$/, '');
+    const searchTerms = [rawName, baseName, trimmed];
+
+    searchTerms.forEach(term => {
+      const match = PUBLIC_LOGO_ASSET_URLS.find(path => {
+        const normalizedPath = path.replace(/^\/+/, '');
+        return normalizedPath === term || normalizedPath.endsWith(`/${term}`);
+      });
+      if (match) addCandidate(match);
+    });
+  };
+
+  const name = (groupName || '').trim();//団体名の前後の空白を削除する
+  const original = (originalLogo || '').trim();//オリジナルのロゴ画像のURLの前後の空白を削除する
+
+  const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);
+  directKeys.forEach(key => {
+    const aliases = LOGO_ALIAS_MAP[key];
+    if (aliases?.length) {
+      aliases.forEach(alias => addCandidate(alias));
+    }
+    addPublicAssetMatches(key);
+  });
+
+  if (original) {
+    addCandidate(original);
+    addPublicAssetMatches(original);
+  }
+
+  addPublicAssetMatches(name);
+
+  const clean = name.replace(/\s+/g, '');
+  [
+    `${name}.png`,
+    `${name}.jpg`,
+    `${name}.jpeg`,
+    `${name}_ロゴ.png`,
+    `${name} ロゴ.png`,
+    `${clean}_ロゴ.png`,
+    `${clean}.png`,
+    `${clean}.jpg`,
+    `${name}_ロゴ.jpg`
+  ].forEach(addCandidate);
+
+  return urls;
+};
+
+const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<string | null> => {//ロゴ候補を順番に確認して、最初に読み込めるものを返す関数です。
+  const cacheKey = `${(groupName || '').trim()}::${(originalLogo || '').trim()}`;
+  const cached = logoResolutionCacheRef.current[cacheKey];
+  if (cached !== undefined) return cached;
+
+  const pending = logoResolutionInFlightRef.current[cacheKey];
+  if (pending) return pending;
+
+  const candidates = getLogoSrcCandidates(originalLogo, groupName);
+  const promise = (async () => {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      const resolved = await new Promise<string | null>((resolve) => {
+        const probe = new Image();
+        probe.onload = () => resolve(candidate);
+        probe.onerror = () => resolve(null);
+        probe.decoding = 'async';
+        probe.src = candidate;
+      });
+
+      if (resolved) {
+        logoResolutionCacheRef.current[cacheKey] = resolved;
+        return resolved;
+      }
+
+      if (index < candidates.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 40));
+      }
+    }
+
+    logoResolutionCacheRef.current[cacheKey] = null;
+    return null;
+  })();
+
+  logoResolutionInFlightRef.current[cacheKey] = promise;
+  try {
+    return await promise;
+  } finally {
+    delete logoResolutionInFlightRef.current[cacheKey];
+  }
+};
+
 // ⏱️ 更新からの経過時間を計算する関数
 const getTimeAgo = (dateString: string): string => {//　更新日時の文字列を受け取り、現在時刻との差を計算して「たった今」「〇分前」「〇時間前」「〇日前」といった形式で返す関数です。
   if (!dateString || dateString === "ー") return "";//日付文字列が空または「ー」の場合は空文字を返す
@@ -98,6 +217,41 @@ const getTimeAgo = (dateString: string): string => {//　更新日時の文字�
   const diffInDays = Math.floor(diffInHours / 24);// 24時間以上なら日単位で計算
   return `${diffInDays}日前`;// 7日以上なら「〇日前」と表示
 };
+
+interface LogoImageProps {//ロゴ画像を安定して表示するためのコンポーネントのプロパティです。
+  originalLogo: string;//団体のロゴ画像のURL
+  groupName: string;//団体名
+  alt: string;//画像の代替テキスト
+  className?: string;//画像のクラス名
+  fallbackClassName?: string;//ロゴが見つからなかったときの表示クラス名
+}
+
+function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName }: LogoImageProps) {//ロゴ画像の解決を非同期で行い、表示が安定するようにするコンポーネントです。
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadLogo = async () => {
+      const resolved = await resolveLogoSrc(originalLogo, groupName);
+      if (isActive) {
+        setResolvedSrc(resolved);
+      }
+    };
+
+    loadLogo();
+
+    return () => {
+      isActive = false;
+    };
+  }, [originalLogo, groupName]);
+
+  if (resolvedSrc) {
+    return <img src={resolvedSrc} alt={alt} className={className} loading="lazy" decoding="async" />;
+  }
+
+  return <span className={fallbackClassName || 'text-[10px] md:text-xs font-bold text-slate-400'}>祭</span>;
+}
 
 export default function App() {//アプリを動かすためのコード
   const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
@@ -201,155 +355,6 @@ export default function App() {//アプリを動かすためのコード
     navigator.clipboard.writeText(text);//クリップボードにコピーする
     setCopiedText(label);
     setTimeout(() => setCopiedText(null), 2000);//2秒後にコピーしたことを示すラベルを消す
-  };
-
-  // 画像の読み込み候補を作る。
-  // まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試す。
-  const isAbsoluteLogoReference = (value: string): boolean => {//ロゴ候補が http(s) や data などの絶対参照かどうかを判定する関数です。
-    const trimmed = value.trim();
-    return /^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed);
-  };
-
-  const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {//オリジナルのロゴ画像のURLと団体名を受け取り、画像の読み込み候補を作る関数です。まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試します。
-    const urls: string[] = [];//画像の読み込み候補を格納する配列です。
-    const addCandidate = (value: string) => {//画像の読み込み候補を追加する関数です。valueは追加する候補の文字列です。
-      if (!value) return;//valueが空文字の場合は何もしない
-      const trimmed = value.trim();//valueの前後の空白を削除する
-      if (!trimmed) return;//trimmedが空文字の場合は何もしない
-      const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
-      const absolute = isAbsoluteLogoReference(normalized);
-      const variants = [normalized];
-      if (!absolute) {
-        variants.push(`/${normalized.replace(/^\/+/, '')}`);
-        variants.push(`/${normalized.replace(/^\/+/, '')}`.replace(/^\//, ''));
-      }
-      variants.forEach(v => {//様々な候補を追加する。
-        if (!urls.includes(v)) urls.push(v);//urlsに含まれていない場合は追加する
-      });
-    };
-
-    const addPublicAssetMatches = (value: string) => {// public 配下に存在する画像のうち、名前やファイル名に一致するものを優先して候補に加える関数です。
-      const trimmed = (value || '').trim();
-      if (!trimmed) return;
-      const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;
-      const baseName = rawName.replace(/\.[^.]+$/, '');
-      const searchTerms = [rawName, baseName, trimmed];
-
-      searchTerms.forEach(term => {
-        const match = PUBLIC_LOGO_ASSET_URLS.find(path => {
-          const normalizedPath = path.replace(/^\/+/, '');
-          return normalizedPath === term || normalizedPath.endsWith(`/${term}`);
-        });
-        if (match) addCandidate(match);
-      });
-    };
-
-    const name = (groupName || '').trim();//団体名の前後の空白を削除する
-    const original = (originalLogo || '').trim();//オリジナルのロゴ画像のURLの前後の空白を削除する
-
-    const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);
-    directKeys.forEach(key => {
-      const aliases = LOGO_ALIAS_MAP[key];
-      if (aliases?.length) {
-        aliases.forEach(alias => addCandidate(alias));
-      }
-      addPublicAssetMatches(key);
-    });
-
-    if (original) {
-      addCandidate(original);
-      addPublicAssetMatches(original);
-    }
-
-    addPublicAssetMatches(name);
-
-    const clean = name.replace(/\s+/g, '');
-    [
-      `${name}.png`,
-      `${name}.jpg`,
-      `${name}.jpeg`,
-      `${name}_ロゴ.png`,
-      `${name} ロゴ.png`,
-      `${clean}_ロゴ.png`,
-      `${clean}.png`,
-      `${clean}.jpg`,
-      `${name}_ロゴ.jpg`
-    ].forEach(addCandidate);
-
-    return urls;
-  };
-
-  const clearLogoFallback = (img: HTMLImageElement) => {//ロゴ画像の読み込み成功時に、フォールバック表示を消して本来の画像を見えるようにする関数です。
-    img.style.display = '';
-    const parent = img.parentElement;
-    if (!parent) return;
-    const fallback = parent.querySelector('.fallback-text');
-    if (fallback) fallback.remove();
-  };
-
-  const showLogoFallback = (img: HTMLImageElement) => {//ロゴの候補がすべて失敗したときに、祭の文字を表示する関数です。
-    img.style.display = 'none';
-    const parent = img.parentElement;
-    if (!parent || parent.querySelector('.fallback-text')) return;
-    const textDiv = document.createElement('div');
-    textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
-    textDiv.innerText = '祭';
-    parent.appendChild(textDiv);
-  };
-
-  const handleLogoLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {//ロゴ画像が読み込めたときに、フォールバック表示を消す処理です。
-    const img = e.target as HTMLImageElement;
-    clearLogoFallback(img);
-  };
-
-  // 画像読み込みに失敗したときのフォールバック処理。
-  // 1回失敗してもすぐに祭表示にしないで、同じ候補を数回だけ再試行する。
-  const handleLogoError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    const img = e.target as HTMLImageElement;
-    const candidatesStr = img.getAttribute('data-candidates');
-    if (!candidatesStr) return;
-
-    try {
-      const candidates: string[] = JSON.parse(candidatesStr);
-      const currentIdx = parseInt(img.getAttribute('data-index') || '0', 10);
-      const maxAttemptsPerCandidate = 2;
-
-      const tryCandidate = (idx: number, attempt: number) => {
-        if (idx >= candidates.length) {
-          showLogoFallback(img);
-          return;
-        }
-
-        const candidate = candidates[idx];
-        const probe = new Image();
-        const finish = () => {
-          probe.onload = null;
-          probe.onerror = null;
-        };
-
-        probe.onload = () => {
-          finish();
-          img.setAttribute('data-index', idx.toString());
-          img.src = candidate;
-          clearLogoFallback(img);
-        };
-
-        probe.onerror = () => {
-          finish();
-          if (attempt < maxAttemptsPerCandidate) {
-            setTimeout(() => tryCandidate(idx, attempt + 1), 150 * (attempt + 1));
-          } else {
-            tryCandidate(idx + 1, 0);
-          }
-        };
-
-        probe.src = candidate;
-      };
-
-      tryCandidate(currentIdx, 0);
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   const getMapImagePath = (buttonName: string): string | null => {
@@ -894,19 +899,7 @@ export default function App() {//アプリを動かすためのコード
                                 ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.9)] animate-pulse' 
                                 : theme.border
                             }`}>
-                              {candidates.length > 0 ? (
-                                <img 
-                                  src={candidates[0]} 
-                                  alt={pin.groupName} 
-                                  className="w-full h-full object-cover" 
-                                  data-candidates={candidatesJson} 
-                                  data-index="0" 
-                                  onLoad={handleLogoLoad}
-                                  onError={handleLogoError} 
-                                />
-                              ) : (
-                                <span className="text-[10px] md:text-xs font-bold text-slate-500">{pin.groupName.slice(0, 2)}</span>
-                              )}
+                              <LogoImage originalLogo={groupInfo?.logo || ''} groupName={groupInfo?.name || pin.groupName} alt={pin.groupName} className="w-full h-full object-cover" fallbackClassName="text-[10px] md:text-xs font-bold text-slate-500" />
                             </div>
 
                             {!measureMode && (
@@ -949,10 +942,7 @@ export default function App() {//アプリを動かすためのコード
                       <div className="flex items-center gap-3">
                         <div className="w-14 h-14 rounded-xl bg-white border border-amber-300 flex-shrink-0 flex items-center justify-center overflow-hidden shadow-sm relative">
                           {(() => {
-                            const candidates = getLogoSrcCandidates(highlightedGroup.logo, highlightedGroup.name);
-                            return candidates.length > 0 ? (
-                              <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={JSON.stringify(candidates)} data-index="0" onLoad={handleLogoLoad} onError={handleLogoError} />
-                            ) : ( <div className="text-xl font-bold text-slate-400">祭</div> );
+                            return <LogoImage originalLogo={highlightedGroup.logo} groupName={highlightedGroup.name} alt="logo" className="w-full h-full object-cover" fallbackClassName="text-xl font-bold text-slate-400" />;
                           })()}
                         </div>
                         <div>
@@ -1022,8 +1012,6 @@ export default function App() {//アプリを動かすためのコード
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredGroups.map((group, idx) => {
-                const candidates = getLogoSrcCandidates(group.logo, group.name);
-                const candidatesJson = JSON.stringify(candidates);
                 const timeAgoStr = getTimeAgo(group.lastUpdated);
 
                 return (
@@ -1036,19 +1024,7 @@ export default function App() {//アプリを動かすためのコード
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
-                            {candidates.length > 0 ? (
-                              <img
-                                src={candidates[0]}
-                                alt={group.name}
-                                className="w-full h-full object-cover"
-                                data-candidates={candidatesJson}
-                                data-index="0"
-                                onLoad={handleLogoLoad}
-                                onError={handleLogoError}
-                              />
-                            ) : (
-                              <span className="text-sm font-bold text-slate-400">祭</span>
-                            )}
+                            <LogoImage originalLogo={group.logo} groupName={group.name} alt={group.name} className="w-full h-full object-cover" fallbackClassName="text-sm font-bold text-slate-400" />
                           </div>
                           <div>
                             <h3 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition line-clamp-1">
@@ -1121,22 +1097,7 @@ export default function App() {//アプリを動かすためのコード
 
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden relative">
-                {(() => {
-                  const candidates = getLogoSrcCandidates(selectedGroupInfo.logo, selectedGroupInfo.name);
-                  return candidates.length > 0 ? (
-                    <img
-                      src={candidates[0]}
-                      alt="logo"
-                      className="w-full h-full object-cover"
-                      data-candidates={JSON.stringify(candidates)}
-                      data-index="0"
-                      onLoad={handleLogoLoad}
-                      onError={handleLogoError}
-                    />
-                  ) : (
-                    <span className="text-xl font-bold text-slate-400">祭</span>
-                  );
-                })()}
+                <LogoImage originalLogo={selectedGroupInfo.logo} groupName={selectedGroupInfo.name} alt="logo" className="w-full h-full object-cover" fallbackClassName="text-xl font-bold text-slate-400" />
               </div>
               <div>
                 <h3 className="font-bold text-base text-slate-900">{selectedGroupInfo.name}</h3>
