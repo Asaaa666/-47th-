@@ -77,6 +77,10 @@ const LOGO_ALIAS_MAP: Record<string, string[]> = {// 団体名や既存のファ
   "Melon Frappe Jazz Orchestra": ["/Melon Frappe Jazz Orchestra_ロゴ.png"],
 };
 
+const PUBLIC_LOGO_ASSET_URLS = Object.values(
+  import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
+).filter(Boolean);
+
 // ⏱️ 更新からの経過時間を計算する関数
 const getTimeAgo = (dateString: string): string => {//　更新日時の文字列を受け取り、現在時刻との差を計算して「たった今」「〇分前」「〇時間前」「〇日前」といった形式で返す関数です。
   if (!dateString || dateString === "ー") return "";//日付文字列が空または「ー」の場合は空文字を返す
@@ -201,6 +205,11 @@ export default function App() {//アプリを動かすためのコード
 
   // 画像の読み込み候補を作る。
   // まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試す。
+  const isAbsoluteLogoReference = (value: string): boolean => {//ロゴ候補が http(s) や data などの絶対参照かどうかを判定する関数です。
+    const trimmed = value.trim();
+    return /^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed);
+  };
+
   const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {//オリジナルのロゴ画像のURLと団体名を受け取り、画像の読み込み候補を作る関数です。まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試します。
     const urls: string[] = [];//画像の読み込み候補を格納する配列です。
     const addCandidate = (value: string) => {//画像の読み込み候補を追加する関数です。valueは追加する候補の文字列です。
@@ -208,10 +217,30 @@ export default function App() {//アプリを動かすためのコード
       const trimmed = value.trim();//valueの前後の空白を削除する
       if (!trimmed) return;//trimmedが空文字の場合は何もしない
       const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
-      const withSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;//先頭に/がついていない場合はつける
-      const variants = [withSlash, trimmed, `/${trimmed}`];//候補のバリエーションを作る。
+      const absolute = isAbsoluteLogoReference(normalized);
+      const variants = [normalized];
+      if (!absolute) {
+        variants.push(`/${normalized.replace(/^\/+/, '')}`);
+        variants.push(`/${normalized.replace(/^\/+/, '')}`.replace(/^\//, ''));
+      }
       variants.forEach(v => {//様々な候補を追加する。
         if (!urls.includes(v)) urls.push(v);//urlsに含まれていない場合は追加する
+      });
+    };
+
+    const addPublicAssetMatches = (value: string) => {// public 配下に存在する画像のうち、名前やファイル名に一致するものを優先して候補に加える関数です。
+      const trimmed = (value || '').trim();
+      if (!trimmed) return;
+      const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;
+      const baseName = rawName.replace(/\.[^.]+$/, '');
+      const searchTerms = [rawName, baseName, trimmed];
+
+      searchTerms.forEach(term => {
+        const match = PUBLIC_LOGO_ASSET_URLS.find(path => {
+          const normalizedPath = path.replace(/^\/+/, '');
+          return normalizedPath === term || normalizedPath.endsWith(`/${term}`);
+        });
+        if (match) addCandidate(match);
       });
     };
 
@@ -224,9 +253,15 @@ export default function App() {//アプリを動かすためのコード
       if (aliases?.length) {
         aliases.forEach(alias => addCandidate(alias));
       }
+      addPublicAssetMatches(key);
     });
 
-    if (original) addCandidate(original);
+    if (original) {
+      addCandidate(original);
+      addPublicAssetMatches(original);
+    }
+
+    addPublicAssetMatches(name);
 
     const clean = name.replace(/\s+/g, '');
     [
