@@ -279,6 +279,29 @@ export default function App() {//アプリを動かすためのコード
     return urls;
   };
 
+  const clearLogoFallback = (img: HTMLImageElement) => {//ロゴ画像の読み込み成功時に、フォールバック表示を消して本来の画像を見えるようにする関数です。
+    img.style.display = '';
+    const parent = img.parentElement;
+    if (!parent) return;
+    const fallback = parent.querySelector('.fallback-text');
+    if (fallback) fallback.remove();
+  };
+
+  const showLogoFallback = (img: HTMLImageElement) => {//ロゴの候補がすべて失敗したときに、祭の文字を表示する関数です。
+    img.style.display = 'none';
+    const parent = img.parentElement;
+    if (!parent || parent.querySelector('.fallback-text')) return;
+    const textDiv = document.createElement('div');
+    textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
+    textDiv.innerText = '祭';
+    parent.appendChild(textDiv);
+  };
+
+  const handleLogoLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {//ロゴ画像が読み込めたときに、フォールバック表示を消す処理です。
+    const img = e.target as HTMLImageElement;
+    clearLogoFallback(img);
+  };
+
   // 画像読み込みに失敗したときのフォールバック処理。
   // 1回失敗してもすぐに祭表示にしないで、同じ候補を数回だけ再試行する。
   const handleLogoError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
@@ -293,14 +316,7 @@ export default function App() {//アプリを動かすためのコード
 
       const tryCandidate = (idx: number, attempt: number) => {
         if (idx >= candidates.length) {
-          img.style.display = 'none';
-          const parent = img.parentElement;
-          if (parent && !parent.querySelector('.fallback-text')) {
-            const textDiv = document.createElement('div');
-            textDiv.className = 'fallback-text text-xs font-bold text-slate-400 absolute inset-0 flex items-center justify-center bg-slate-100';
-            textDiv.innerText = '祭';
-            parent.appendChild(textDiv);
-          }
+          showLogoFallback(img);
           return;
         }
 
@@ -315,6 +331,7 @@ export default function App() {//アプリを動かすためのコード
           finish();
           img.setAttribute('data-index', idx.toString());
           img.src = candidate;
+          clearLogoFallback(img);
         };
 
         probe.onerror = () => {
@@ -884,6 +901,7 @@ export default function App() {//アプリを動かすためのコード
                                   className="w-full h-full object-cover" 
                                   data-candidates={candidatesJson} 
                                   data-index="0" 
+                                  onLoad={handleLogoLoad}
                                   onError={handleLogoError} 
                                 />
                               ) : (
@@ -933,7 +951,7 @@ export default function App() {//アプリを動かすためのコード
                           {(() => {
                             const candidates = getLogoSrcCandidates(highlightedGroup.logo, highlightedGroup.name);
                             return candidates.length > 0 ? (
-                              <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={JSON.stringify(candidates)} data-index="0" onError={handleLogoError} />
+                              <img src={candidates[0]} alt="logo" className="w-full h-full object-cover" data-candidates={JSON.stringify(candidates)} data-index="0" onLoad={handleLogoLoad} onError={handleLogoError} />
                             ) : ( <div className="text-xl font-bold text-slate-400">祭</div> );
                           })()}
                         </div>
@@ -1025,6 +1043,7 @@ export default function App() {//アプリを動かすためのコード
                                 className="w-full h-full object-cover"
                                 data-candidates={candidatesJson}
                                 data-index="0"
+                                onLoad={handleLogoLoad}
                                 onError={handleLogoError}
                               />
                             ) : (
@@ -1111,6 +1130,7 @@ export default function App() {//アプリを動かすためのコード
                       className="w-full h-full object-cover"
                       data-candidates={JSON.stringify(candidates)}
                       data-index="0"
+                      onLoad={handleLogoLoad}
                       onError={handleLogoError}
                     />
                   ) : (
