@@ -395,18 +395,20 @@ export default function App() {//アプリを動かすためのコード
     setTimeout(() => setCopiedText(null), 2000);//2秒後にコピーしたことを示すラベルを消す
   };
 
-  const getMapImagePath = (buttonName: string): string | null => {//校内マップは容量削減のため WebP を優先して読み込むようにして、必要に応じて PNG へフォールバックできるようにします。
+  const MAP_ASSET_VERSION = '20260804-2';// Vercel やブラウザのキャッシュで古い PNG が残らないよう、マップ画像 URL にはバージョンを付けて更新を強制します。
+
+  const getMapImageSources = (buttonName: string): { webp: string; png: string } | null => {//校内マップは WebP を優先して読み込み、対応ブラウザでなければ PNG へフォールバックします。
     if (!buttonName || buttonName === 'すべて' || buttonName === 'その他' || buttonName === '屋台') return null;
 
-    const mapImageMap: Record<string, string> = {
-      '中学・高校棟 1階': '/1階 (1).webp',
-      '中学・高校棟 2階': '/2階 (1).webp',
-      '中学棟 3階': '/中学棟三階.webp',
-      '中学棟 4階': '/中学棟四階.webp',
-      '中学棟 5階': '/中学棟五階.webp',
-      '高校棟 3階': '/高校棟三階.webp',
-      '高校棟 4階': '/高校棟四階.webp',
-      '高校棟 5階': '/高校棟五階.webp'
+    const mapImageMap: Record<string, { webp: string; png: string }> = {
+      '中学・高校棟 1階': { webp: `/1階 (1).webp?v=${MAP_ASSET_VERSION}`, png: `/1階 (1).png?v=${MAP_ASSET_VERSION}` },
+      '中学・高校棟 2階': { webp: `/2階 (1).webp?v=${MAP_ASSET_VERSION}`, png: `/2階 (1).png?v=${MAP_ASSET_VERSION}` },
+      '中学棟 3階': { webp: `/中学棟三階.webp?v=${MAP_ASSET_VERSION}`, png: `/中学棟三階.png?v=${MAP_ASSET_VERSION}` },
+      '中学棟 4階': { webp: `/中学棟四階.webp?v=${MAP_ASSET_VERSION}`, png: `/中学棟四階.png?v=${MAP_ASSET_VERSION}` },
+      '中学棟 5階': { webp: `/中学棟五階.webp?v=${MAP_ASSET_VERSION}`, png: `/中学棟五階.png?v=${MAP_ASSET_VERSION}` },
+      '高校棟 3階': { webp: `/高校棟三階.webp?v=${MAP_ASSET_VERSION}`, png: `/高校棟三階.png?v=${MAP_ASSET_VERSION}` },
+      '高校棟 4階': { webp: `/高校棟四階.webp?v=${MAP_ASSET_VERSION}`, png: `/高校棟四階.png?v=${MAP_ASSET_VERSION}` },
+      '高校棟 5階': { webp: `/高校棟五階.webp?v=${MAP_ASSET_VERSION}`, png: `/高校棟五階.png?v=${MAP_ASSET_VERSION}` }
     };
 
     return mapImageMap[buttonName] || null;
@@ -576,7 +578,7 @@ export default function App() {//アプリを動かすためのコード
     'すべて', '中学・高校棟 1階', '中学・高校棟 2階', '中学棟 3階', '中学棟 4階', '中学棟 5階', '高校棟 3階', '高校棟 4階', '高校棟 5階', '打越アリーナ', '屋台', 'その他'
   ];
 
-  const currentMapPath = getMapImagePath(filterLocation);
+  const currentMapSources = getMapImageSources(filterLocation);
   const highlightedGroup = groups.find(g => g.name === highlightedGroupName);
 
   const getPinTheme = (time: string) => {
@@ -886,7 +888,7 @@ export default function App() {//アプリを動かすためのコード
         </div>
 
         {/* 🗺️ マップコンテナ */}
-        {currentMapPath && (
+        {currentMapSources && (
           <div ref={mapContainerRef} className={`bg-white border rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20 transition-all ${measureMode ? 'border-purple-400 ring-2 ring-purple-100' : 'border-slate-200'}`}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -910,14 +912,17 @@ export default function App() {//アプリを動かすためのコード
                   }`}
                 >
                   <div className="relative inline-block w-full leading-none text-[0]">
-                    <img
-                      src={currentMapPath}
-                      alt={`${filterLocation}のマップ`}
-                      className="w-full h-auto block pointer-events-none"
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority="low"
-                    />
+                    <picture>
+                      <source type="image/webp" srcSet={currentMapSources.webp} />
+                      <img
+                        src={currentMapSources.png}
+                        alt={`${filterLocation}のマップ`}
+                        className="w-full h-auto block pointer-events-none"
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                      />
+                    </picture>
                     
                     {/* 既存の団体ピン */}
                     {activePins.map((pin, i) => {
