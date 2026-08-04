@@ -77,16 +77,16 @@ const LOGO_ALIAS_MAP: Record<string, string[]> = {// 団体名や既存のファ
   "Melon Frappe Jazz Orchestra": ["/Melon Frappe Jazz Orchestra_ロゴ.png"],
 };
 
-const PUBLIC_LOGO_ASSET_URLS = Object.values(
+const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像ファイルから取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
   import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
-).filter(Boolean);
+).filter(Boolean);//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
 
-const logoResolutionCacheRef = { current: {} as Record<string, string | null> };
-const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };
+const logoResolutionCacheRef = { current: {} as Record<string, string | null> };//ロゴの解決結果をキャッシュするためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決されたロゴのURLまたはnullです。
+const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };//ロゴの解決中のPromiseを保持するためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決中のPromiseです。
 
 const isAbsoluteLogoReference = (value: string): boolean => {//ロゴ候補が http(s) や data などの絶対参照かどうかを判定する関数です。
-  const trimmed = value.trim();
-  return /^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed);
+  const trimmed = value.trim();//valueの前後の空白を削除する
+  return /^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed);//正規表現を使って、valueがhttp(s)://、data:、blob:、または//で始まるかどうかを判定します。これらの形式は絶対参照とみなされます。
 };
 
 const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[] => {//オリジナルのロゴ画像のURLと団体名を受け取り、画像の読み込み候補を作る関数です。まずは実在する public 配下のロゴを優先し、次に名前から推測する候補を試します。
@@ -96,10 +96,10 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
     const trimmed = value.trim();//valueの前後の空白を削除する
     if (!trimmed) return;//trimmedが空文字の場合は何もしない
     const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
-    const absolute = isAbsoluteLogoReference(normalized);
-    const variants = [normalized];
-    if (!absolute) {
-      variants.push(`/${normalized.replace(/^\/+/, '')}`);
+    const absolute = isAbsoluteLogoReference(normalized);//normalizedが絶対参照かどうかを判定する
+    const variants = [normalized];//表記ゆれ回収(絶対参照の場合はそのまま、相対参照の場合は / を付けたものと付けないものの2種類を候補に追加する)
+    if (!absolute) {//表記ずれを吸収
+      variants.push(`/${normalized.replace(/^\/+/, '')}`);//相対参照の場合は、先頭のスラッシュを取り除いたものにスラッシュを付けたものを候補に追加する
       variants.push(`/${normalized.replace(/^\/+/, '')}`.replace(/^\//, ''));
     }
     variants.forEach(v => {//様々な候補を追加する。
@@ -108,95 +108,95 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
   };
 
   const addPublicAssetMatches = (value: string) => {// public 配下に存在する画像のうち、名前やファイル名に一致するものを優先して候補に加える関数です。
-    const trimmed = (value || '').trim();
-    if (!trimmed) return;
-    const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;
-    const baseName = rawName.replace(/\.[^.]+$/, '');
-    const searchTerms = [rawName, baseName, trimmed];
+    const trimmed = (value || '').trim();//valueの前後の空白を削除する
+    if (!trimmed) return;//trimmedが空文字の場合は何もしない
+    const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;//trimmedの先頭のスラッシュや./を取り除き、最後のスラッシュ以降の文字列を取得する。もし取得できなかった場合はtrimmedをそのまま使用する。
+    const baseName = rawName.replace(/\.[^.]+$/, '');//rawNameの拡張子を取り除いた文字列を取得する。もし拡張子がなかった場合はrawNameをそのまま使用する。
+    const searchTerms = [rawName, baseName, trimmed];//検索対象の文字列を配列に格納する。rawName、baseName、trimmedの順に格納する。
 
-    searchTerms.forEach(term => {
-      const match = PUBLIC_LOGO_ASSET_URLS.find(path => {
-        const normalizedPath = path.replace(/^\/+/, '');
-        return normalizedPath === term || normalizedPath.endsWith(`/${term}`);
+    searchTerms.forEach(term => {//検索対象の文字列を順番に処理する。
+      const match = PUBLIC_LOGO_ASSET_URLS.find(path => {//PUBLIC_LOGO_ASSET_URLSの中から、検索対象の文字列に一致するものを探す。
+        const normalizedPath = path.replace(/^\/+/, '');//pathの先頭のスラッシュを取り除いた文字列を取得する。
+        return normalizedPath === term || normalizedPath.endsWith(`/${term}`);//normalizedPathがtermと完全一致するか、normalizedPathの末尾が/termで終わるかを判定する。
       });
-      if (match) addCandidate(match);
+      if (match) addCandidate(match);//一致するものが見つかった場合は、addCandidate関数を使って候補に追加する。
     });
   };
 
   const name = (groupName || '').trim();//団体名の前後の空白を削除する
   const original = (originalLogo || '').trim();//オリジナルのロゴ画像のURLの前後の空白を削除する
 
-  const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);
-  directKeys.forEach(key => {
-    const aliases = LOGO_ALIAS_MAP[key];
-    if (aliases?.length) {
-      aliases.forEach(alias => addCandidate(alias));
+  const directKeys = [name, name.replace(/\s+/g, ''), original, original.replace(/\s+/g, '')].filter(Boolean);//団体名やオリジナルのロゴ画像のURLを候補として配列に格納する。空文字は除外する。
+  directKeys.forEach(key => {//団体名やオリジナルのロゴ画像のURLを順番に処理する。
+    const aliases = LOGO_ALIAS_MAP[key];//LOGO_ALIAS_MAPにkeyが存在する場合は、その値（候補の配列）を取得する。存在しない場合はundefinedになる。
+    if (aliases?.length) {//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。
+      aliases.forEach(alias => addCandidate(alias));//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。aliasをaddCandidate関数を使って候補に追加する。
     }
-    addPublicAssetMatches(key);
+    addPublicAssetMatches(key);//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。keyをaddPublicAssetMatches関数を使って候補に追加する。
   });
 
-  if (original) {
-    addCandidate(original);
-    addPublicAssetMatches(original);
+  if (original) {//オリジナルのロゴ画像のURLが存在する場合は、候補に追加する。
+    addCandidate(original);//オリジナルのロゴ画像のURLを候補に追加する。
+    addPublicAssetMatches(original);//オリジナルのロゴ画像のURLを候補に追加する。
   }
 
-  addPublicAssetMatches(name);
+  addPublicAssetMatches(name);//団体名を候補に追加する。
 
-  const clean = name.replace(/\s+/g, '');
+  const clean = name.replace(/\s+/g, '');//団体名の空白を取り除いた文字列を取得する。
   [
-    `${name}.png`,
-    `${name}.jpg`,
-    `${name}.jpeg`,
-    `${name}_ロゴ.png`,
-    `${name} ロゴ.png`,
-    `${clean}_ロゴ.png`,
-    `${clean}.png`,
-    `${clean}.jpg`,
-    `${name}_ロゴ.jpg`
-  ].forEach(addCandidate);
+    `${name}.png`,//団体名に.pngを付けた文字列を候補に追加する。
+    `${name}.jpg`,//団体名に.jpgを付けた文字列を候補に追加する。
+    `${name}.jpeg`,//団体名に.jpegを付けた文字列を候補に追加する。
+    `${name}_ロゴ.png`,//団体名に_ロゴ.pngを付けた文字列を候補に追加する。
+    `${name} ロゴ.png`,//団体名に ロゴ.pngを付けた文字列を候補に追加する。
+    `${clean}_ロゴ.png`,//団体名の空白を取り除いた文字列に_ロゴ.pngを付けた文字列を候補に追加する。
+    `${clean}.png`,//団体名の空白を取り除いた文字列に.pngを付けた文字列を候補に追加する。
+    `${clean}.jpg`,//団体名の空白を取り除いた文字列に.jpgを付けた文字列を候補に追加する。
+    `${name}_ロゴ.jpg`//団体名に_ロゴ.jpgを付けた文字列を候補に追加する。
+  ].forEach(addCandidate);//上記の候補を順番に処理する。addCandidate関数を使って候補に追加する。
 
-  return urls;
+  return urls;//候補の配列を返す
 };
 
 const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<string | null> => {//ロゴ候補を順番に確認して、最初に読み込めるものを返す関数です。
-  const cacheKey = `${(groupName || '').trim()}::${(originalLogo || '').trim()}`;
-  const cached = logoResolutionCacheRef.current[cacheKey];
-  if (cached !== undefined) return cached;
+  const cacheKey = `${(groupName || '').trim()}::${(originalLogo || '').trim()}`;//キャッシュキーを作成する。団体名とオリジナルのロゴ画像のURLを::で区切った文字列を作成する。
+  const cached = logoResolutionCacheRef.current[cacheKey];//キャッシュに解決済みのロゴ画像のURLが存在する場合は、それを返す。キャッシュに存在しない場合は、次の処理に進む。
+  if (cached !== undefined) return cached;//キャッシュに解決済みのロゴ画像のURLが存在する場合は、それを返す。キャッシュに存在しない場合は、次の処理に進む。
 
-  const pending = logoResolutionInFlightRef.current[cacheKey];
-  if (pending) return pending;
+  const pending = logoResolutionInFlightRef.current[cacheKey];//解決中のPromiseが存在する場合は、それを返す。解決中のPromiseが存在しない場合は、次の処理に進む。
+  if (pending) return pending;//解決中のPromiseが存在する場合は、それを返す。解決中のPromiseが存在しない場合は、次の処理に進む。
 
-  const candidates = getLogoSrcCandidates(originalLogo, groupName);
-  const promise = (async () => {
-    for (let index = 0; index < candidates.length; index += 1) {
-      const candidate = candidates[index];
-      const resolved = await new Promise<string | null>((resolve) => {
-        const probe = new Image();
-        probe.onload = () => resolve(candidate);
-        probe.onerror = () => resolve(null);
-        probe.decoding = 'async';
-        probe.src = candidate;
+  const candidates = getLogoSrcCandidates(originalLogo, groupName);//ロゴ候補を取得する。getLogoSrcCandidates関数を使って、団体名とオリジナルのロゴ画像のURLから候補の配列を取得する。
+  const promise = (async () => {//ロゴ候補を順番に確認して、最初に読み込めるものを返す非同期関数です。
+    for (let index = 0; index < candidates.length; index += 1) {//候補の配列を順番に処理する。indexは候補の配列のインデックスを表す。
+      const candidate = candidates[index];//候補の配列から、現在のインデックスに対応する候補を取得する。
+      const resolved = await new Promise<string | null>((resolve) => {//候補の画像を読み込めるかどうかを確認するためのPromiseを作成する。resolve関数は、画像の読み込みが成功した場合に呼び出される。
+        const probe = new Image();//画像を読み込むためのImageオブジェクトを作成する。
+        probe.onload = () => resolve(candidate);//画像の読み込みが成功した場合は、resolve関数を呼び出して、候補の画像のURLを返す。
+        probe.onerror = () => resolve(null);//画像の読み込みが失敗した場合は、resolve関数を呼び出して、nullを返す。
+        probe.decoding = 'async';//画像のデコードを非同期で行うように設定する。これにより、画像の読み込みが完了する前に次の処理に進むことができる。
+        probe.src = candidate;//画像のURLを設定して、画像の読み込みを開始する。
       });
 
-      if (resolved) {
-        logoResolutionCacheRef.current[cacheKey] = resolved;
-        return resolved;
+      if (resolved) {//画像の読み込みが成功した場合は、キャッシュに解決済みのロゴ画像のURLを保存して、それを返す。
+        logoResolutionCacheRef.current[cacheKey] = resolved;//キャッシュに解決済みのロゴ画像のURLを保存する。キャッシュキーは、団体名とオリジナルのロゴ画像のURLを::で区切った文字列で作成する。
+        return resolved;//画像の読み込みが成功した場合は、キャッシュに解決済みのロゴ画像のURLを保存して、それを返す。
       }
 
-      if (index < candidates.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 40));
+      if (index < candidates.length - 1) {//画像の読み込みが失敗した場合は、次の候補を試す前に少し待つ。これにより、連続して画像の読み込みを行うことで、ブラウザのリソース制限に引っかかることを防ぐ。
+        await new Promise(resolve => setTimeout(resolve, 40));//40ミリ秒待つ。setTimeout関数を使って、指定した時間が経過した後にresolve関数を呼び出すことで、Promiseを解決する。
       }
     }
 
-    logoResolutionCacheRef.current[cacheKey] = null;
-    return null;
+    logoResolutionCacheRef.current[cacheKey] = null;//すべての候補が読み込めなかった場合は、キャッシュにnullを保存して、それを返す。
+    return null;//すべての候補が読み込めなかった場合は、キャッシュにnullを保存して、それを返す。
   })();
 
-  logoResolutionInFlightRef.current[cacheKey] = promise;
-  try {
-    return await promise;
-  } finally {
-    delete logoResolutionInFlightRef.current[cacheKey];
+  logoResolutionInFlightRef.current[cacheKey] = promise;//解決中のPromiseを保存する。キャッシュキーは、団体名とオリジナルのロゴ画像のURLを::で区切った文字列で作成する。
+  try {//解決中のPromiseを返す。これにより、同じ団体名とオリジナルのロゴ画像のURLに対して、複数のコンポーネントが同時にロゴの解決を行うことを防ぐ。
+    return await promise;//解決中のPromiseを返す。これにより、同じ団体名とオリジナルのロゴ画像のURLに対して、複数のコンポーネントが同時にロゴの解決を行うことを防ぐ。
+  } finally {//解決中のPromiseを削除する。これにより、同じ団体名とオリジナルのロゴ画像のURLに対して、複数のコンポーネントが同時にロゴの解決を行うことを防ぐ。
+    delete logoResolutionInFlightRef.current[cacheKey];//解決中のPromiseを削除する。これにより、同じ団体名とオリジナルのロゴ画像のURLに対して、複数のコンポーネントが同時にロゴの解決を行うことを防ぐ。
   }
 };
 
@@ -227,9 +227,41 @@ interface LogoImageProps {//ロゴ画像を安定して表示するためのコ�
 }
 
 function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName }: LogoImageProps) {//ロゴ画像の解決を非同期で行い、表示が安定するようにするコンポーネントです。
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);//解決済みのロゴ画像URLを保持するステート
+  const [shouldLoad, setShouldLoad] = useState(false);//画面内に入ったらロゴ読み込みを開始するためのステート
+  const containerRef = useRef<HTMLSpanElement>(null);//ロゴの可視判定に使う参照
 
   useEffect(() => {
+    let isActive = true;
+    const node = containerRef.current;
+
+    if (!node) {
+      setShouldLoad(false);
+      return undefined;
+    }
+
+    // 🔎 画面内に入ったタイミングでだけロゴをロードして、初期表示の通信量を抑える
+    const observer = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver((entries) => {
+          const isVisible = entries.some(entry => entry.isIntersecting);
+          if (isVisible && isActive) {
+            setShouldLoad(true);
+            observer.disconnect();
+          }
+        }, { rootMargin: '200px 0px' })
+      : null;
+
+    observer?.observe(node);
+
+    return () => {
+      isActive = false;
+      observer?.disconnect();
+    };
+  }, [originalLogo, groupName]);
+
+  useEffect(() => {
+    if (!shouldLoad) return undefined;
+
     let isActive = true;
 
     const loadLogo = async () => {
@@ -244,13 +276,19 @@ function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName 
     return () => {
       isActive = false;
     };
-  }, [originalLogo, groupName]);
+  }, [shouldLoad, originalLogo, groupName]);
 
-  if (resolvedSrc) {
-    return <img src={resolvedSrc} alt={alt} className={className} loading="lazy" decoding="async" />;
-  }
+  const baseFallbackClassName = fallbackClassName || 'text-[10px] md:text-xs font-bold text-slate-400';
 
-  return <span className={fallbackClassName || 'text-[10px] md:text-xs font-bold text-slate-400'}>祭</span>;
+  return (
+    <span ref={containerRef} className={`w-full h-full flex items-center justify-center ${baseFallbackClassName}`}>
+      {resolvedSrc ? (
+        <img src={resolvedSrc} alt={alt} className={className} loading="lazy" decoding="async" />
+      ) : (
+        '祭'
+      )}
+    </span>
+  );
 }
 
 export default function App() {//アプリを動かすためのコード
@@ -357,18 +395,21 @@ export default function App() {//アプリを動かすためのコード
     setTimeout(() => setCopiedText(null), 2000);//2秒後にコピーしたことを示すラベルを消す
   };
 
-  const getMapImagePath = (buttonName: string): string | null => {
+  const getMapImagePath = (buttonName: string): string | null => {//校内マップは容量削減のため WebP を優先して読み込むようにして、必要に応じて PNG へフォールバックできるようにします。
     if (!buttonName || buttonName === 'すべて' || buttonName === 'その他' || buttonName === '屋台') return null;
-    
-    if (buttonName === '中学・高校棟 1階') return '/1階 (1).png';
-    if (buttonName === '中学・高校棟 2階') return '/2階 (1).png';
-    if (buttonName === '中学棟 3階') return '/中学棟三階.png';
-    if (buttonName === '中学棟 4階') return '/中学棟四階.png';
-    if (buttonName === '中学棟 5階') return '/中学棟五階.png';
-    if (buttonName === '高校棟 3階') return '/高校棟三階.png';
-    if (buttonName === '高校棟 4階') return '/高校棟四階.png';
-    if (buttonName === '高校棟 5階') return '/高校棟五階.png';
-    return null;
+
+    const mapImageMap: Record<string, string> = {
+      '中学・高校棟 1階': '/1階 (1).webp',
+      '中学・高校棟 2階': '/2階 (1).webp',
+      '中学棟 3階': '/中学棟三階.webp',
+      '中学棟 4階': '/中学棟四階.webp',
+      '中学棟 5階': '/中学棟五階.webp',
+      '高校棟 3階': '/高校棟三階.webp',
+      '高校棟 4階': '/高校棟四階.webp',
+      '高校棟 5階': '/高校棟五階.webp'
+    };
+
+    return mapImageMap[buttonName] || null;
   };
 
   const getUnifiedLocationGroup = (rawLocation: string): string => {
@@ -869,7 +910,14 @@ export default function App() {//アプリを動かすためのコード
                   }`}
                 >
                   <div className="relative inline-block w-full leading-none text-[0]">
-                    <img src={currentMapPath} alt={`${filterLocation}のマップ`} className="w-full h-auto block pointer-events-none" />
+                    <img
+                      src={currentMapPath}
+                      alt={`${filterLocation}のマップ`}
+                      className="w-full h-auto block pointer-events-none"
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                    />
                     
                     {/* 既存の団体ピン */}
                     {activePins.map((pin, i) => {
