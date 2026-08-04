@@ -599,7 +599,7 @@ export default function App() {//アプリを動かすためのコード
     const group = groups.find(g => g.name === groupName);
     const targetLocation = groupCoord?.location || (group ? getUnifiedLocationGroup(group.location) : null);
 
-    if (targetLocation && getMapImagePath(targetLocation)) {
+    if (targetLocation && getMapImageSources(targetLocation)) {
       setHighlightedGroupName(groupName);
 
       if (filterLocation !== targetLocation) {
