@@ -77,9 +77,16 @@ const LOGO_ALIAS_MAP: Record<string, string[]> = {// 団体名や既存のファ
   "Melon Frappe Jazz Orchestra": ["/Melon Frappe Jazz Orchestra_ロゴ.png"],
 };
 
+const normalizePublicAssetUrl = (value: string): string => {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return '';
+  if (/^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed)) return trimmed;
+  return trimmed.replace(/^\/public\//, '/').replace(/^\/+/, '/');
+};
+
 const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像ファイルから取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
   import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
-).filter(Boolean);//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
+).filter(Boolean).map(value => normalizePublicAssetUrl(String(value)));//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
 
 const logoResolutionCacheRef = { current: {} as Record<string, string | null> };//ロゴの解決結果をキャッシュするためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決されたロゴのURLまたはnullです。
 const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };//ロゴの解決中のPromiseを保持するためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決中のPromiseです。
@@ -97,10 +104,11 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
     if (!trimmed) return;//trimmedが空文字の場合は何もしない
     const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
     const absolute = isAbsoluteLogoReference(normalized);//normalizedが絶対参照かどうかを判定する
-    const variants = [normalized];//表記ゆれ回収(絶対参照の場合はそのまま、相対参照の場合は / を付けたものと付けないものの2種類を候補に追加する)
+    const normalizedForProbe = normalizePublicAssetUrl(normalized);
+    const variants = [normalizedForProbe];//表記ゆれ回収(絶対参照の場合はそのまま、相対参照の場合は / を付けたものと付けないものの2種類を候補に追加する)
     if (!absolute) {//表記ずれを吸収
-      variants.push(`/${normalized.replace(/^\/+/, '')}`);//相対参照の場合は、先頭のスラッシュを取り除いたものにスラッシュを付けたものを候補に追加する
-      variants.push(`/${normalized.replace(/^\/+/, '')}`.replace(/^\//, ''));
+      variants.push(`/${normalizedForProbe.replace(/^\/+/, '')}`);//相対参照の場合は、先頭のスラッシュを取り除いたものにスラッシュを付けたものを候補に追加する
+      variants.push(`/${normalizedForProbe.replace(/^\/+/, '')}`.replace(/^\//, ''));
     }
     variants.forEach(v => {//様々な候補を追加する。
       if (!urls.includes(v)) urls.push(v);//urlsに含まれていない場合は追加する
@@ -218,6 +226,78 @@ const getTimeAgo = (dateString: string): string => {//　更新日時の文字�
   return `${diffInDays}日前`;// 7日以上なら「〇日前」と表示
 };
 
+const normalizeWaitingTime = (value: string | undefined): string => {
+  const normalized = (value ?? '').toString().trim().replace(/\s+/g, '');
+  if (!normalized || normalized === 'ー' || normalized === '—' || normalized === '-') return 'ー';
+  if (normalized === '休止中' || normalized === '休止') return '休止中';
+  if (normalized === '売り切れ' || normalized === '売切れ') return '売り切れ';
+  return normalized;
+};
+
+const getWaitingDisplayInfo = (value: string | undefined) => {
+  const normalized = normalizeWaitingTime(value);
+
+  if (normalized === 'ー') {
+    return {
+      kind: 'empty' as const,
+      displayText: 'ー',
+      sortScore: 0,
+      borderClass: 'border-blue-500',
+      bgClass: 'bg-blue-500',
+      textClass: 'text-slate-400',
+    };
+  }
+
+  if (normalized === '休止中') {
+    return {
+      kind: 'paused' as const,
+      displayText: '休止中',
+      sortScore: 6,
+      borderClass: 'border-slate-500',
+      bgClass: 'bg-slate-500',
+      textClass: 'text-slate-600',
+    };
+  }
+
+  if (normalized === '売り切れ') {
+    return {
+      kind: 'soldout' as const,
+      displayText: '売り切れ',
+      sortScore: 7,
+      borderClass: 'border-rose-600',
+      bgClass: 'bg-rose-600',
+      textClass: 'text-rose-600',
+    };
+  }
+
+  const numericValue = Number.parseFloat(normalized);
+  if (!Number.isNaN(numericValue)) {
+    const level = Math.max(1, Math.min(5, Math.round(numericValue)));
+    return {
+      kind: 'numeric' as const,
+      displayText: String(level),
+      sortScore: numericValue,
+      borderClass: level <= 2 ? 'border-green-500' : level === 3 ? 'border-orange-500' : 'border-red-500',
+      bgClass: level <= 2 ? 'bg-green-500' : level === 3 ? 'bg-orange-500' : 'bg-red-500',
+      textClass: level <= 2 ? 'text-green-600' : level === 3 ? 'text-orange-600' : 'text-red-600',
+    };
+  }
+
+  return {
+    kind: 'unknown' as const,
+    displayText: normalized,
+    sortScore: Number.POSITIVE_INFINITY,
+    borderClass: 'border-blue-500',
+    bgClass: 'bg-blue-500',
+    textClass: 'text-slate-500',
+  };
+};
+
+const getWaitingSortScore = (waitingTime: string | undefined): number => {
+  const info = getWaitingDisplayInfo(waitingTime);
+  return info.kind === 'empty' ? 0 : info.sortScore;
+};
+
 interface LogoImageProps {//ロゴ画像を安定して表示するためのコンポーネントのプロパティです。
   originalLogo: string;//団体のロゴ画像のURL
   groupName: string;//団体名
@@ -231,63 +311,63 @@ function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName 
   const [shouldLoad, setShouldLoad] = useState(false);//画面内に入ったらロゴ読み込みを開始するためのステート
   const containerRef = useRef<HTMLSpanElement>(null);//ロゴの可視判定に使う参照
 
-  useEffect(() => {
-    let isActive = true;
-    const node = containerRef.current;
+  useEffect(() => {//URLの切り替えに応じてロゴの解決を行うための副作用フックです。
+    let isActive = true;//アクティブな状態を示すフラグ
+    const node = containerRef.current;//ロゴの可視判定に使う参照の現在の値を取得
 
-    if (!node) {
-      setShouldLoad(false);
-      return undefined;
+    if (!node) {//参照が存在しない場合はロゴの読み込みを中止
+      setShouldLoad(false);//画面内に入ったらロゴ読み込みを開始するためのステートをfalseに設定
+      return undefined;//ロゴの解決を中止
     }
 
     // 🔎 画面内に入ったタイミングでだけロゴをロードして、初期表示の通信量を抑える
-    const observer = typeof IntersectionObserver !== 'undefined'
-      ? new IntersectionObserver((entries) => {
-          const isVisible = entries.some(entry => entry.isIntersecting);
-          if (isVisible && isActive) {
-            setShouldLoad(true);
-            observer.disconnect();
+    const observerInstance = typeof IntersectionObserver !== 'undefined'//IntersectionObserverがサポートされている場合は、IntersectionObserverを使ってロゴの可視判定を行う
+      ? new IntersectionObserver((entries) => {//IntersectionObserverを使ってロゴの可視判定を行うコールバック関数です。つまり、ロゴが画面内に入ったタイミングでだけロゴをロードして、初期表示の通信量を抑えることができます。
+          const isVisible = entries.some(entry => entry.isIntersecting);//ロゴが画面内に入ったかどうかを判定するフラグ
+          if (isVisible && isActive) {//ロゴが画面内に入った場合は、ロゴの読み込みを開始する
+            setShouldLoad(true);//画面内に入ったらロゴ読み込みを開始するためのステートをtrueに設定
+            observerInstance?.disconnect();//IntersectionObserverを切断して、ロゴの可視判定を終了する
           }
-        }, { rootMargin: '200px 0px' })
+        }, { rootMargin: '200px 0px' })//IntersectionObserverのオプションを設定する。rootMarginは、画面内に入ったと判定する範囲を指定する。ここでは、上下200pxの範囲で判定するように設定している。
       : null;
 
-    observer?.observe(node);
+    observerInstance?.observe(node);//IntersectionObserverを使ってロゴの可視判定を開始する。nodeは、ロゴの可視判定に使う参照の現在の値です。
 
     return () => {
-      isActive = false;
-      observer?.disconnect();
+      isActive = false;//コンポーネントがアンマウントされるときに、アクティブな状態をfalseに設定して、ロゴの解決を中止する
+      observerInstance?.disconnect();//IntersectionObserverを切断して、ロゴの可視判定を終了する
     };
-  }, [originalLogo, groupName]);
+  }, [originalLogo, groupName]);//originalLogoとgroupNameが変更されたときに、ロゴの可視判定を再度行うための副作用フックです。
 
   useEffect(() => {
-    if (!shouldLoad) return undefined;
+    if (!shouldLoad) return undefined;//ロゴの読み込みを開始するためのステートがfalseの場合は、ロゴの解決を中止する
 
-    let isActive = true;
+    let isActive = true;//アクティブな状態を示すフラグ
 
-    const loadLogo = async () => {
-      const resolved = await resolveLogoSrc(originalLogo, groupName);
-      if (isActive) {
-        setResolvedSrc(resolved);
+    const loadLogo = async () => {//ロゴの解決を非同期で行う関数です。
+      const resolved = await resolveLogoSrc(originalLogo, groupName);//ロゴの解決を非同期で行い、解決済みのロゴ画像URLを取得する
+      if (isActive) {//コンポーネントがアンマウントされていない場合は、解決済みのロゴ画像URLをステートに設定する
+        setResolvedSrc(resolved);//解決済みのロゴ画像URLをステートに設定する
       }
     };
 
-    loadLogo();
+    loadLogo();//ロゴの解決を非同期で行う関数を呼び出す
 
     return () => {
-      isActive = false;
+      isActive = false;//コンポーネントがアンマウントされるときに、アクティブな状態をfalseに設定して、ロゴの解決を中止する
     };
-  }, [shouldLoad, originalLogo, groupName]);
+  }, [shouldLoad, originalLogo, groupName]);//shouldLoad、originalLogo、groupNameが変更されたときに、ロゴの解決を再度行うための副作用フックです。
 
-  const baseFallbackClassName = fallbackClassName || 'text-[10px] md:text-xs font-bold text-slate-400';
+  const baseFallbackClassName = fallbackClassName || 'text-[10px] md:text-xs font-bold text-slate-400';//ロゴが見つからなかったときの表示クラス名を設定する。fallbackClassNameが指定されていない場合は、デフォルトのクラス名を使用する。
 
   return (
-    <span ref={containerRef} className={`w-full h-full flex items-center justify-center ${baseFallbackClassName}`}>
-      {resolvedSrc ? (
-        <img src={resolvedSrc} alt={alt} className={className} loading="lazy" decoding="async" />
+    <span ref={containerRef} className={`w-full h-full flex items-center justify-center ${baseFallbackClassName}`}>　
+      {resolvedSrc ? (//解決済みのロゴ画像URLが存在する場合は、画像を表示する
+        <img src={resolvedSrc} alt={alt} className={className} loading="lazy" decoding="async" />//解決済みのロゴ画像URLが存在する場合は、画像を表示する。srcは、解決済みのロゴ画像URLです。altは、画像の代替テキストです。classNameは、画像のクラス名です。loading="lazy"は、画像の遅延読み込みを有効にする属性です。decoding="async"は、画像のデコードを非同期で行う属性です。
       ) : (
-        '祭'
+        '祭'//解決済みのロゴ画像URLが存在しない場合は、代替テキストを表示する
       )}
-    </span>
+    </span>//ロゴ画像の解決を非同期で行い、表示が安定するようにするコンポーネントのレンダリング部分です。containerRefは、ロゴの可視判定に使う参照です。baseFallbackClassNameは、ロゴが見つからなかったときの表示クラス名です。
   );
 }
 
@@ -342,8 +422,8 @@ export default function App() {//アプリを動かすためのコード
             const g = groups.find(item => item.name === name);//団体名に一致するグループを検索します。
             if (!g || !g.waitingTime) return 999;//グループが存在しない場合や待ち時間が存在しない場合は、999を返します。(一番下に表示されるようにするため)
             if (g.waitingTime === 'ー') return 0; // 待ち時間が「ー」の場合は、0を返します。(一番上に表示されるようにするため)
-            const val = parseFloat(g.waitingTime);//待ち時間を数値に変換します。
-            return isNaN(val) ? 999 : val;//待ち時間が数値に変換できない場合は、999を返します。(一番下に表示されるようにするため)
+            const info = getWaitingDisplayInfo(g.waitingTime);
+            return info.kind === 'empty' ? 0 : info.sortScore;
           };
           return getScore(a.groupName) - getScore(b.groupName);//待ち時間の差を計算します。
         });
@@ -563,12 +643,12 @@ export default function App() {//アプリを動かすためのコード
     } else if (sortBy === 'category') {
       const catCompare = a.category.localeCompare(b.category, 'ja');
       if (catCompare !== 0) return catCompare;
-      const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
-      const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
+      const valA = getWaitingSortScore(a.waitingTime);
+      const valB = getWaitingSortScore(b.waitingTime);
       return valA - valB;
     } else {
-      const valA = a.waitingTime === "ー" ? Infinity : parseFloat(a.waitingTime);
-      const valB = b.waitingTime === "ー" ? Infinity : parseFloat(b.waitingTime);
+      const valA = getWaitingSortScore(a.waitingTime);
+      const valB = getWaitingSortScore(b.waitingTime);
       if (valA !== valB) return valA - valB;
       return a.name.localeCompare(b.name, 'ja');
     }
@@ -582,13 +662,8 @@ export default function App() {//アプリを動かすためのコード
   const highlightedGroup = groups.find(g => g.name === highlightedGroupName);
 
   const getPinTheme = (time: string) => {
-    if (time === "ー" || !time) return { border: "border-blue-500", bg: "bg-blue-500" };
-    const t = parseFloat(time);
-    if (isNaN(t)) return { border: "border-blue-500", bg: "bg-blue-500" };
-    if (t <= 2) return { border: "border-green-500", bg: "bg-green-500" };
-    if (t <= 4) return { border: "border-orange-500", bg: "bg-orange-500" };
-    if (t <= 5) return { border: "border-red-500", bg: "bg-red-500" };
-    return { border: "border-red-600", bg: "bg-red-600" };
+    const info = getWaitingDisplayInfo(time);
+    return { border: info.borderClass, bg: info.bgClass };
   };
 
   const handleItemClick = (groupName: string, source: 'map' | 'list') => {
@@ -810,6 +885,24 @@ export default function App() {//アプリを動かすためのコード
           <span className="font-bold text-slate-800 text-xs">とても混んでいる</span>
           <span className="text-[10px] text-slate-400 mt-0.5">長蛇の列・入場規制</span>
         </div>
+
+        {/* 休止中 */}
+        <div className="bg-white p-2.5 rounded-xl border border-slate-400 shadow-sm flex flex-col items-center text-center hover:border-slate-500 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 mb-1">
+            休止中
+          </span>
+          <span className="font-bold text-slate-800 text-xs">一時休止</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">展示や営業を休止中</span>
+        </div>
+
+        {/* 売り切れ */}
+        <div className="bg-white p-2.5 rounded-xl border border-rose-400 shadow-sm flex flex-col items-center text-center hover:border-rose-500 transition">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 mb-1">
+            売り切れ
+          </span>
+          <span className="font-bold text-slate-800 text-xs">受付終了</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">品切れ・配布終了</span>
+        </div>
       </div>
     </div>
 
@@ -927,7 +1020,7 @@ export default function App() {//アプリを動かすためのコード
                       const theme = getPinTheme(groupInfo?.waitingTime || "ー");
                       const isTarget = highlightedGroupName === pin.groupName;
                       const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
-                      const candidatesJson = JSON.stringify(candidates);
+                      void candidates;
                       
                       return (
                         <div 
@@ -1015,14 +1108,18 @@ export default function App() {//アプリを動かすためのコード
                         )}
                       </div>
                       <div className="text-right">
-                        {highlightedGroup.waitingTime !== "ー" ? (
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-xs font-bold text-amber-700">レベル</span>
-                            <span className="text-3xl font-black text-amber-600">{highlightedGroup.waitingTime}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm font-bold text-slate-400">データなし</span>
-                        )}
+                        {(() => {
+                          const waitingInfo = getWaitingDisplayInfo(highlightedGroup.waitingTime);
+                          if (waitingInfo.kind === 'numeric') {
+                            return (
+                              <div className="flex items-baseline gap-0.5">
+                                <span className="text-xs font-bold text-amber-700">レベル</span>
+                                <span className="text-3xl font-black text-amber-600">{waitingInfo.displayText}</span>
+                              </div>
+                            );
+                          }
+                          return <span className={`text-sm font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                        })()}
                       </div>
                     </div>
 
@@ -1094,14 +1191,18 @@ export default function App() {//アプリを動かすためのコード
                         </div>
 
                         <div className="text-right flex-shrink-0">
-                          {group.waitingTime !== "ー" ? (
-                            <div className="flex items-baseline gap-0.5">
-                              <span className="text-[10px] font-bold text-slate-400">Lv.</span>
-                              <span className="text-xl font-black text-orange-500">{group.waitingTime}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs font-bold text-slate-300">ー</span>
-                          )}
+                          {(() => {
+                            const waitingInfo = getWaitingDisplayInfo(group.waitingTime);
+                            if (waitingInfo.kind === 'numeric') {
+                              return (
+                                <div className="flex items-baseline gap-0.5">
+                                  <span className="text-[10px] font-bold text-slate-400">Lv.</span>
+                                  <span className="text-xl font-black text-orange-500">{waitingInfo.displayText}</span>
+                                </div>
+                              );
+                            }
+                            return <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                          })()}
                         </div>
                       </div>
 
@@ -1172,14 +1273,18 @@ export default function App() {//アプリを動かすためのコード
                 )}
               </div>
               <div className="text-right">
-                {selectedGroupInfo.waitingTime !== "ー" ? (
-                  <div className="flex items-baseline gap-0.5">
-                    <span className="text-xs font-bold text-orange-700">レベル</span>
-                    <span className="text-2xl font-black text-orange-600">{selectedGroupInfo.waitingTime}</span>
-                  </div>
-                ) : (
-                  <span className="text-xs font-bold text-slate-400">未更新</span>
-                )}
+                {(() => {
+                  const waitingInfo = getWaitingDisplayInfo(selectedGroupInfo.waitingTime);
+                  if (waitingInfo.kind === 'numeric') {
+                    return (
+                      <div className="flex items-baseline gap-0.5">
+                        <span className="text-xs font-bold text-orange-700">レベル</span>
+                        <span className="text-2xl font-black text-orange-600">{waitingInfo.displayText}</span>
+                      </div>
+                    );
+                  }
+                  return <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                })()}
               </div>
             </div>
 
@@ -1208,4 +1313,5 @@ export default function App() {//アプリを動かすためのコード
     </div>
   );
 }
+
 
