@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';//アプリを動かす使うUseStateやUseEffectなどのフックを導入
+import { normalizeCategoryValue, getUnifiedLocationGroup, matchesSearchQuery } from './searchUtils';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";//読み込むスプレットシートを選択するコード
@@ -77,11 +78,11 @@ const LOGO_ALIAS_MAP: Record<string, string[]> = {// 団体名や既存のファ
   "Melon Frappe Jazz Orchestra": ["/Melon Frappe Jazz Orchestra_ロゴ.png"],
 };
 
-const normalizePublicAssetUrl = (value: string): string => {
-  const trimmed = (value || '').trim();
-  if (!trimmed) return '';
-  if (/^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed)) return trimmed;
-  return trimmed.replace(/^\/public\//, '/').replace(/^\/+/, '/');
+const normalizePublicAssetUrl = (value: string): string => {//public配下の画像ファイルのURLを正規化する関数です。valueは、正規化する文字列です。
+  const trimmed = (value || '').trim();//スペースを削除する
+  if (!trimmed) return '';//trimmedが空文字の場合は空文字を返す
+  if (/^(https?:\/\/|data:|blob:|\/\/)/i.test(trimmed)) return trimmed;//URLのバグを修正
+  return trimmed.replace(/^\/public\//, '/').replace(/^\/+/, '/');//public配下の画像ファイルのURLを正規化するために、先頭の/public/を/に置換し、先頭のスラッシュを1つに統一する
 };
 
 const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像ファイルから取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
@@ -234,25 +235,25 @@ const normalizeWaitingTime = (value: string | undefined): string => {
   return normalized;
 };
 
-const getWaitingDisplayInfo = (value: string | undefined) => {
-  const normalized = normalizeWaitingTime(value);
+const getWaitingDisplayInfo = (value: string | undefined) => {//待ち時間の表示情報を取得する関数です。valueは、待ち時間の文字列です。
+  const normalized = normalizeWaitingTime(value);//待ち時間の文字列を正規化する。normalizeWaitingTime関数を使って、待ち時間の文字列を正規化する。
 
-  if (normalized === 'ー') {
+  if (normalized === 'ー') {//待ち時間が空の場合は、空の表示情報を返す。
     return {
-      kind: 'empty' as const,
-      displayText: 'ー',
-      sortScore: 0,
-      borderClass: 'border-blue-500',
-      bgClass: 'bg-blue-500',
-      textClass: 'text-slate-400',
+      kind: 'empty' as const,//待ち時間が空の場合は、空の表示情報を返す。
+      displayText: 'ー',//待ち時間が空の場合は、空の表示情報を返す。
+      sortScore: 0,//待ち時間が空の場合は、空の表示情報を返す。
+      borderClass: 'border-blue-500',//青色の枠線を表示するためのクラス名
+      bgClass: 'bg-blue-500',//青色の背景を表示するためのクラス名
+      textClass: 'text-slate-400',//テキスト
     };
   }
 
-  if (normalized === '休止中') {
+  if (normalized === '休止中') {//待ち時間が休止中の場合は、休止中の表示情報を返す。
     return {
-      kind: 'paused' as const,
+      kind: 'paused' as const,//待ち時間が休止中の場合は、休止中の表示情報を返す。
       displayText: '休止中',
-      sortScore: 6,
+      sortScore: 6,//待ち時間を6としてソートするためのスコア
       borderClass: 'border-slate-500',
       bgClass: 'bg-slate-500',
       textClass: 'text-slate-600',
@@ -261,7 +262,7 @@ const getWaitingDisplayInfo = (value: string | undefined) => {
 
   if (normalized === '売り切れ') {
     return {
-      kind: 'soldout' as const,
+      kind: 'soldout' as const,//待ち時間が売り切れの場合は、売り切れの表示情報を返す。
       displayText: '売り切れ',
       sortScore: 7,
       borderClass: 'border-rose-600',
@@ -272,19 +273,19 @@ const getWaitingDisplayInfo = (value: string | undefined) => {
 
   const numericValue = Number.parseFloat(normalized);
   if (!Number.isNaN(numericValue)) {
-    const level = Math.max(1, Math.min(5, Math.round(numericValue)));
+    const level = Math.max(1, Math.min(5, Math.round(numericValue)));//待ち時間の数値を1から5の範囲に丸める。1未満は1、5より大きい場合は5にする。
     return {
       kind: 'numeric' as const,
-      displayText: String(level),
+      displayText: String(level),//
       sortScore: numericValue,
-      borderClass: level <= 2 ? 'border-green-500' : level === 3 ? 'border-orange-500' : 'border-red-500',
-      bgClass: level <= 2 ? 'bg-green-500' : level === 3 ? 'bg-orange-500' : 'bg-red-500',
+      borderClass: level <= 2 ? 'border-green-500' : level === 3 ? 'border-orange-500' : 'border-red-500',//待ち時間の数値に応じて、枠線の色を変更する。1〜2は緑、3はオレンジ、4〜5は赤にする。
+      bgClass: level <= 2 ? 'bg-green-500' : level === 3 ? 'bg-orange-500' : 'bg-red-500',//3より大きい場合は赤にする。
       textClass: level <= 2 ? 'text-green-600' : level === 3 ? 'text-orange-600' : 'text-red-600',
     };
   }
 
   return {
-    kind: 'unknown' as const,
+    kind: 'unknown' as const,//待ち時間が不明な場合は、不明の表示情報を返す。
     displayText: normalized,
     sortScore: Number.POSITIVE_INFINITY,
     borderClass: 'border-blue-500',
@@ -494,28 +495,6 @@ export default function App() {//アプリを動かすためのコード
     return mapImageMap[buttonName] || null;
   };
 
-  const getUnifiedLocationGroup = (rawLocation: string): string => {
-    if (!rawLocation) return 'その他';
-    if (rawLocation.includes('清和書林') || rawLocation.includes('清話書林') || rawLocation.includes('ハンドボールコートB')) return 'その他';
-    if (rawLocation.includes('屋台') || rawLocation.includes('ハンドボールコート')) return '屋台';
-    if (rawLocation.includes('アリーナ') || rawLocation.includes('打越アリーナ')) return '打越アリーナ';
-    if (rawLocation.includes('中学棟 1階') || rawLocation.includes('高校棟 1階') || (rawLocation.includes('1階') && (rawLocation.includes('中学') || rawLocation.includes('高校')))) return '中学・高校棟 1階';
-    if (rawLocation.includes('中学棟 2階') || rawLocation.includes('高校棟 2階') || (rawLocation.includes('2階') && (rawLocation.includes('中学') || rawLocation.includes('高校')))) return '中学・高校棟 2階';
-    if (rawLocation.includes('中学棟')) {
-      if (rawLocation.includes('3階')) return '中学棟 3階';
-      if (rawLocation.includes('4階')) return '中学棟 4階';
-      if (rawLocation.includes('5階')) return '中学棟 5階';
-    }
-    if (rawLocation.includes('高校棟')) {
-      if (rawLocation.includes('3階')) return '高校棟 3階';
-      if (rawLocation.includes('4階')) return '高校棟 4階';
-      if (rawLocation.includes('5階')) return '高校棟 5階';
-    }
-    if (rawLocation.includes('1階')) return '中学・高校棟 1階';
-    if (rawLocation.includes('2階')) return '中学・高校棟 2階';
-    return 'other_fallback'; 
-  };
-
   // GAS から団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する。
   const fetchData = async () => {
     try {
@@ -530,7 +509,8 @@ export default function App() {//アプリを動かすためのコード
       const coordsRows = (data.coords || []).slice(1);
       const parsedCoords: Coordinate[] = coordsRows.filter((row: any[]) => row && row[0] && row[1]).map((row: any[]) => {
         const groupName = String(row[0]).trim();
-        const category = row[5] ? String(row[5]).trim() : (row[4] ? String(row[4]).trim() : "");
+        const categoryRaw = row[5] ? String(row[5]).trim() : (row[4] ? String(row[4]).trim() : "");
+        const category = normalizeCategoryValue(categoryRaw);
         if (groupName && category) {
           coordsCategoryMap[groupName] = category;
         }
@@ -556,7 +536,7 @@ export default function App() {//アプリを動かすためのコード
       const groupsRows = (data.groups || []).slice(1);
       let mergedGroups: Group[] = groupsRows.filter((row: any[]) => row && row.length > 1 && row[1]).map((row: any[]) => {
         const name = String(row[1]).trim();
-        const category = coordsCategoryMap[name] || (row[5] ? String(row[5]).trim() : "その他");
+        const category = normalizeCategoryValue(coordsCategoryMap[name] || (row[5] ? String(row[5]).trim() : "その他"));
         return {
           name: name,
           description: row[2] ? String(row[2]) : "紹介文はまだありません。",
@@ -579,7 +559,7 @@ export default function App() {//アプリを動かすためのコード
           name: "生物部", description: "生物部です！様々な展示を行っています。ぜひお越しください！", location: "生物特別教室", logo: "肩 生物部ロゴ.png",
           status: bioUpdates ? "更新済" : "未更新", waitingTime: bioUpdates ? latestUpdates[bioUpdates].waiting : "ー",
           comment: bioUpdates ? latestUpdates[bioUpdates].comment : "", lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : "",
-          category: coordsCategoryMap["生物部"] || "展示"
+          category: normalizeCategoryValue(coordsCategoryMap["生物部"] || "展示")
         });
       }
 
@@ -589,7 +569,7 @@ export default function App() {//アプリを動かすためのコード
           name: "図書研究部", description: "図書研究部（図書委員会古本バザー）です。面白い本がたくさんあります！", location: "本校舎教室", logo: "図書研究部 ロゴ.png",
           status: libUpdates ? "更新済" : "未更新", waitingTime: libUpdates ? latestUpdates[libUpdates].waiting : "ー",
           comment: libUpdates ? latestUpdates[libUpdates].comment : "", lastUpdated: libUpdates ? latestUpdates[libUpdates].time : "",
-          category: coordsCategoryMap["図書研究部"] || "展示"
+          category: normalizeCategoryValue(coordsCategoryMap["図書研究部"] || "展示")
         });
       }
 
@@ -607,16 +587,11 @@ export default function App() {//アプリを動かすためのコード
     return () => clearInterval(interval);
   }, []);
 
-  const uniqueCategories = Array.from(new Set(groups.map(g => g.category).filter(Boolean)));
+  const uniqueCategories = Array.from(new Set(groups.map(g => normalizeCategoryValue(g.category)).filter(Boolean)));
   const categoryOptions = ['すべて', ...uniqueCategories];
 
   const filteredGroups = groups.filter(group => {
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = group.name.toLowerCase().includes(searchLower) || 
-                          group.description.toLowerCase().includes(searchLower) ||
-                          group.category.toLowerCase().includes(searchLower) ||
-                          group.location.toLowerCase().includes(searchLower);
-    if (!matchesSearch) return false;
+    if (!matchesSearchQuery(group, searchTerm)) return false;
 
     if (filterLocation !== 'すべて') {
       const rawLocation = group.location || "";
@@ -624,15 +599,13 @@ export default function App() {//アプリを動かすためのコード
         if (filterLocation !== '中学・高校棟 1階' && filterLocation !== 'その他') return false;
       } else {
         const unified = getUnifiedLocationGroup(rawLocation);
-        if (filterLocation === 'その他') {
-          if (unified !== 'other_fallback') return false;
-        } else if (unified !== filterLocation) {
+        if (unified !== filterLocation) {
           return false;
         }
       }
     }
 
-    if (filterCategory !== 'すべて' && group.category !== filterCategory) {
+    if (filterCategory !== 'すべて' && normalizeCategoryValue(group.category) !== filterCategory) {
       return false;
     }
 
