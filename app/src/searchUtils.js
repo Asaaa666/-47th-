@@ -71,12 +71,11 @@ export const matchesSearchQuery = (group, searchTerm) => {
     getUnifiedLocationGroup(group.location),
   ].map((value) => normalizeSearchText(value));
 
-  const normalizedQuery = query.join(' ');
   const joinedFields = searchableFields.join(' ');
 
   return query.every((term) => {
     const hasTermMatch = searchableFields.some((field) => field.includes(term));
     const compactMatch = joinedFields.replace(/\s+/g, '').includes(term.replace(/\s+/g, ''));
-    return hasTermMatch || compactMatch || normalizedQuery.includes(term);
+    return hasTermMatch || compactMatch;
   });
 };
