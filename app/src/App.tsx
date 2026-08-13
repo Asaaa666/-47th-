@@ -172,6 +172,16 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
   return urls;//候補の配列を返す
 };
 
+const probeLogoCandidate = (candidate: string): Promise<string | null> => new Promise((resolve) => {
+  if (!candidate) return resolve(null);
+
+  const probe = new Image();
+  probe.onload = () => resolve(candidate);
+  probe.onerror = () => resolve(null);
+  probe.decoding = 'async';
+  probe.src = candidate;
+});
+
 const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<string | null> => {//ロゴ候補を順番に確認して、最初に読み込めるものを返す関数です。
   const cacheKey = `${(groupName || '').trim()}::${(originalLogo || '').trim()}`;//キャッシュキーを作成する。団体名とオリジナルのロゴ画像のURLを::で区切った文字列を作成する。
   const cached = logoResolutionCacheRef.current[cacheKey];//キャッシュに解決済みのロゴ画像のURLが存在する場合は、それを返す。キャッシュに存在しない場合は、次の処理に進む。
@@ -180,30 +190,24 @@ const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<
   const pending = logoResolutionInFlightRef.current[cacheKey];//解決中のPromiseが存在する場合は、それを返す。解決中のPromiseが存在しない場合は、次の処理に進む。
   if (pending) return pending;//解決中のPromiseが存在する場合は、それを返す。解決中のPromiseが存在しない場合は、次の処理に進む。
 
-  const candidates = getLogoSrcCandidates(originalLogo, groupName);//ロゴ候補を取得する。getLogoSrcCandidates関数を使って、団体名とオリジナルのロゴ画像のURLから候補の配列を取得する。
-  const promise = (async () => {//ロゴ候補を順番に確認して、最初に読み込めるものを返す非同期関数です。
-    for (let index = 0; index < candidates.length; index += 1) {//候補の配列を順番に処理する。indexは候補の配列のインデックスを表す。
-      const candidate = candidates[index];//候補の配列から、現在のインデックスに対応する候補を取得する。
-      const resolved = await new Promise<string | null>((resolve) => {//候補の画像を読み込めるかどうかを確認するためのPromiseを作成する。resolve関数は、画像の読み込みが成功した場合に呼び出される。
-        const probe = new Image();//画像を読み込むためのImageオブジェクトを作成する。
-        probe.onload = () => resolve(candidate);//画像の読み込みが成功した場合は、resolve関数を呼び出して、候補の画像のURLを返す。
-        probe.onerror = () => resolve(null);//画像の読み込みが失敗した場合は、resolve関数を呼び出して、nullを返す。
-        probe.decoding = 'async';//画像のデコードを非同期で行うように設定する。これにより、画像の読み込みが完了する前に次の処理に進むことができる。
-        probe.src = candidate;//画像のURLを設定して、画像の読み込みを開始する。
-      });
+  const candidates = Array.from(new Set(getLogoSrcCandidates(originalLogo, groupName)));//ロゴ候補を取得し、重複を除去して高速化する。
 
-      if (resolved) {//画像の読み込みが成功した場合は、キャッシュに解決済みのロゴ画像のURLを保存して、それを返す。
-        logoResolutionCacheRef.current[cacheKey] = resolved;//キャッシュに解決済みのロゴ画像のURLを保存する。キャッシュキーは、団体名とオリジナルのロゴ画像のURLを::で区切った文字列で作成する。
-        return resolved;//画像の読み込みが成功した場合は、キャッシュに解決済みのロゴ画像のURLを保存して、それを返す。
-      }
+  const promise = (async () => {
+    const maxParallelChecks = 4;
 
-      if (index < candidates.length - 1) {//画像の読み込みが失敗した場合は、次の候補を試す前に少し待つ。これにより、連続して画像の読み込みを行うことで、ブラウザのリソース制限に引っかかることを防ぐ。
-        await new Promise(resolve => setTimeout(resolve, 40));//40ミリ秒待つ。setTimeout関数を使って、指定した時間が経過した後にresolve関数を呼び出すことで、Promiseを解決する。
+    for (let index = 0; index < candidates.length; index += maxParallelChecks) {
+      const batch = candidates.slice(index, index + maxParallelChecks);
+      const resolved = await Promise.all(batch.map(candidate => probeLogoCandidate(candidate)));
+      const found = resolved.find((value): value is string => Boolean(value));
+
+      if (found) {
+        logoResolutionCacheRef.current[cacheKey] = found;
+        return found;
       }
     }
 
-    logoResolutionCacheRef.current[cacheKey] = null;//すべての候補が読み込めなかった場合は、キャッシュにnullを保存して、それを返す。
-    return null;//すべての候補が読み込めなかった場合は、キャッシュにnullを保存して、それを返す。
+    logoResolutionCacheRef.current[cacheKey] = null;
+    return null;
   })();
 
   logoResolutionInFlightRef.current[cacheKey] = promise;//解決中のPromiseを保存する。キャッシュキーは、団体名とオリジナルのロゴ画像のURLを::で区切った文字列で作成する。
@@ -404,6 +408,42 @@ export default function App() {//アプリを動かすためのコード
   const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);//マップへのスクロールが保留されているかどうかを管理するためのステート。初期値はnullで、スクロールが保留されると{type: 'map', groupName: string}の形式で情報が格納されます。
 
   const mapContainerRef = useRef<HTMLDivElement>(null);//マップコンテナの参照を保持するためのuseRefフック。初期値はnullで、マップコンテナがレンダリングされるとHTMLDivElementの参照が格納されます。
+  const fetchInFlightRef = useRef(false);//重複したデータ取得を防ぐためのフラグ
+  const DATA_CACHE_TTL_MS = 5 * 60 * 1000;// 5分以上古いデータだけを再取得し、Vercel側のアクセス量を抑える
+  const DATA_CACHE_KEY = 'festival-data-cache-v1';
+
+  const restoreCachedData = (): { savedAt: number; groups: Group[]; coords: Coordinate[] } | null => {
+    try {
+      const cachedRaw = window.localStorage.getItem(DATA_CACHE_KEY);
+      if (!cachedRaw) return null;
+
+      const cached = JSON.parse(cachedRaw) as { savedAt?: number; groups?: Group[]; coords?: Coordinate[] };
+      if (!cached?.savedAt || !Array.isArray(cached.groups) || !Array.isArray(cached.coords)) return null;
+
+      const isFresh = Date.now() - cached.savedAt < DATA_CACHE_TTL_MS;
+      if (!isFresh) return null;
+
+      return {
+        savedAt: cached.savedAt,
+        groups: cached.groups,
+        coords: cached.coords,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const persistCachedData = (nextGroups: Group[], nextCoords: Coordinate[]) => {
+    try {
+      window.localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        groups: nextGroups,
+        coords: nextCoords,
+      }));
+    } catch {
+      // localStorage が使えない環境では無視して通常表示を継続する
+    }
+  };
 
   useEffect(() => {//URLを更新するためのuseEffectフック。filterLocationが変更されるたびに実行されます。
     const params = new URLSearchParams(window.location.search);//URLSearchParamsオブジェクトを作成し、現在のURLのクエリパラメータを取得します。URLSearchParamsオブジェクトは、URLのクエリパラメータを操作するための便利なAPIです。
@@ -502,10 +542,20 @@ export default function App() {//アプリを動かすためのコード
 
   // GAS から団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する。
   const fetchData = async () => {
-    try {
-      setLoading(true);
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
 
-      const res = await fetch(GAS_API_URL);
+    try {
+      const cached = restoreCachedData();
+      if (cached) {
+        setGroups(cached.groups);
+        setCoords(cached.coords);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+
+      const res = await fetch(GAS_API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
 
@@ -579,17 +629,35 @@ export default function App() {//アプリを動かすためのコード
       }
 
       setGroups(mergedGroups);
+      persistCachedData(mergedGroups, parsedCoords);
     } catch (error) {
       console.error("データの取得に失敗しました:", error);
     } finally {
       setLoading(false);
+      fetchInFlightRef.current = false;
     }
   };
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    };
+
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
   }, []);
 
   const uniqueCategories = Array.from(new Set(groups.map(g => normalizeCategoryValue(g.category)).filter(Boolean)));
@@ -672,7 +740,7 @@ export default function App() {//アプリを動かすためのコード
   const selectedGroupInfo = groups.find(g => g.name === modalGroupName);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans pb-12">
+    <div className="min-h-screen bg-slate-50 text-slate-800 antialiased font-sans pb-12 notranslate">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center space-x-3 min-w-0">
@@ -682,8 +750,8 @@ export default function App() {//アプリを動かすためのコード
               className="w-10 h-10 object-contain rounded-xl shadow-md shrink-0"
             />
             <div className="min-w-0">
-              <h1 className="font-black text-base sm:text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent leading-tight">打越祭リアルタイム混雑サイト</h1>
-              <p className="text-[10px] text-slate-400 font-medium -mt-0.5">打越祭をもっと快適に</p>
+              <h1 translate="no" className="font-black text-base sm:text-lg tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent leading-tight notranslate">打越祭リアルタイム混雑サイト</h1>
+              <p className="text-[10px] text-slate-400 font-medium -mt-0.5 notranslate">打越祭をもっと快適に</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
