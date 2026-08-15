@@ -308,6 +308,29 @@ const getWaitingSortScore = (waitingTime: string | undefined): number => {
   return info.kind === 'empty' ? 0 : info.sortScore;
 };
 
+const WAITING_LEVEL_MEANINGS: Record<number, { label: string; detail: string }> = {
+  1: { label: 'とても空いている', detail: '待ち時間ほぼなし' },
+  2: { label: 'かなり空いている', detail: '短時間で入場しやすい' },
+  3: { label: 'ふつう', detail: '標準的な混雑' },
+  4: { label: 'かなり混雑', detail: '待ち時間が発生しやすい' },
+  5: { label: 'とても混雑', detail: '長めの待ち時間の可能性' },
+};
+
+const getWaitingMeaning = (waitingTime: string | undefined): { label: string; detail: string } => {
+  const info = getWaitingDisplayInfo(waitingTime);
+
+  if (info.kind === 'numeric') {
+    const level = Number.parseInt(info.displayText, 10);
+    return WAITING_LEVEL_MEANINGS[level] || { label: '混雑状況を確認中', detail: '最新の更新を待っています' };
+  }
+
+  if (info.kind === 'paused') return { label: '一時休止中', detail: '現在は案内を停止中' };
+  if (info.kind === 'soldout') return { label: '受付終了', detail: '売り切れ・配布終了' };
+  if (info.kind === 'empty') return { label: '未入力', detail: '混雑情報はまだ未登録' };
+
+  return { label: info.displayText, detail: '現地表示をご確認ください' };
+};
+
 interface LogoImageProps {//ロゴ画像を安定して表示するためのコンポーネントのプロパティです。
   originalLogo: string;//団体のロゴ画像のURL
   groupName: string;//団体名
@@ -410,35 +433,35 @@ export default function App() {//アプリを動かすためのコード
   const mapContainerRef = useRef<HTMLDivElement>(null);//マップコンテナの参照を保持するためのuseRefフック。初期値はnullで、マップコンテナがレンダリングされるとHTMLDivElementの参照が格納されます。
   const fetchInFlightRef = useRef(false);//重複したデータ取得を防ぐためのフラグ
   const DATA_CACHE_TTL_MS = 5 * 60 * 1000;// 5分以上古いデータだけを再取得し、Vercel側のアクセス量を抑える
-  const DATA_CACHE_KEY = 'festival-data-cache-v1';
+  const DATA_CACHE_KEY = 'festival-data-cache-v1';// データキャッシュのキー名
 
-  const restoreCachedData = (): { savedAt: number; groups: Group[]; coords: Coordinate[] } | null => {
+  const restoreCachedData = (): { savedAt: number; groups: Group[]; coords: Coordinate[] } | null => {//キャッシュされたデータを復元する関数。localStorageからデータを取得し、JSON.parseでオブジェクトに変換する。データが存在しない場合や、形式が不正な場合はnullを返す。
     try {
-      const cachedRaw = window.localStorage.getItem(DATA_CACHE_KEY);
-      if (!cachedRaw) return null;
+      const cachedRaw = window.localStorage.getItem(DATA_CACHE_KEY);//localStorageからキャッシュされたデータを取得する。キー名はDATA_CACHE_KEYで指定する。
+      if (!cachedRaw) return null;//  キャッシュされたデータが存在しない場合はnullを返す。
 
-      const cached = JSON.parse(cachedRaw) as { savedAt?: number; groups?: Group[]; coords?: Coordinate[] };
-      if (!cached?.savedAt || !Array.isArray(cached.groups) || !Array.isArray(cached.coords)) return null;
+      const cached = JSON.parse(cachedRaw) as { savedAt?: number; groups?: Group[]; coords?: Coordinate[] };//  キャッシュされたデータをJSON.parseでオブジェクトに変換する。型アサーションで、savedAt、groups、coordsのプロパティが存在することを保証する。つまり、savedAtはnumber型、groupsはGroup[]型、coordsはCoordinate[]型であることを保証する。つまりさまざまな種類のデータを格納できるようにするために、型アサーションを使っている。型アサーションとは、TypeScriptで型を明示的に指定することです。型アサーションを使うことで、TypeScriptの型推論を上書きして、より具体的な型を指定することができます。
+      if (!cached?.savedAt || !Array.isArray(cached.groups) || !Array.isArray(cached.coords)) return null;//  キャッシュされたデータの形式が不正な場合はnullを返す。savedAtが存在しない場合、groupsが配列でない場合、coordsが配列でない場合はnullを返す。
 
-      const isFresh = Date.now() - cached.savedAt < DATA_CACHE_TTL_MS;
-      if (!isFresh) return null;
+      const isFresh = Date.now() - cached.savedAt < DATA_CACHE_TTL_MS;//  キャッシュされたデータが新鮮かどうかを判定する。現在時刻とキャッシュされたデータの保存時刻の差が、DATA_CACHE_TTL_MSより小さい場合は新鮮と判定する。つまり、5分以上古いデータは再取得するようにする。
+      if (!isFresh) return null;//  キャッシュされたデータが古い場合はnullを返す。つまり、5分以上古いデータは再取得するようにする。
 
       return {
-        savedAt: cached.savedAt,
-        groups: cached.groups,
-        coords: cached.coords,
+        savedAt: cached.savedAt,//  キャッシュされたデータの保存時刻を返す。
+        groups: cached.groups,//  キャッシュされたデータのグループ情報を返す。
+        coords: cached.coords,//  キャッシュされたデータの座標情報を返す。
       };
     } catch {
-      return null;
+      return null;//  キャッシュされたデータの取得や解析に失敗した場合はnullを返す。つまり、localStorageが使えない環境では無視して通常表示を継続する。
     }
   };
 
-  const persistCachedData = (nextGroups: Group[], nextCoords: Coordinate[]) => {
+  const persistCachedData = (nextGroups: Group[], nextCoords: Coordinate[]) => {//キャッシュされたデータを保存する関数。localStorageにデータを保存する。データの形式は、savedAt、groups、coordsのプロパティを持つオブジェクトである。savedAtは現在時刻をミリ秒単位で表すnumber型、groupsはGroup[]型、coordsはCoordinate[]型である。
     try {
-      window.localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({
-        savedAt: Date.now(),
-        groups: nextGroups,
-        coords: nextCoords,
+      window.localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({//localStorageにデータを保存する。キー名はDATA_CACHE_KEYで指定する。値は、savedAt、groups、coordsのプロパティを持つオブジェクトをJSON.stringifyで文字列化したもの。
+        savedAt: Date.now(),//現在時刻をミリ秒単位で表すnumber型を保存する。これにより、キャッシュの有効期限を判定することができる。
+        groups: nextGroups,//グループ情報を保存する。これにより、キャッシュの有効期限を判定することができる。
+        coords: nextCoords,//座標情報を保存する。これにより、キャッシュの有効期限を判定することができる。
       }));
     } catch {
       // localStorage が使えない環境では無視して通常表示を継続する
@@ -537,61 +560,66 @@ export default function App() {//アプリを動かすためのコード
       '高校棟 5階': `/高校棟五階.webp?v=${MAP_ASSET_VERSION}`
     };
 
-    return mapImageMap[buttonName] || null;
+    return mapImageMap[buttonName] || null;//ボタン名に対応するマップ画像のURLを返す。対応するマップ画像がない場合はnullを返す。
   };
 
   // GAS から団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する。
-  const fetchData = async () => {
-    if (fetchInFlightRef.current) return;
-    fetchInFlightRef.current = true;
+  const fetchData = async () => {//GASから団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する非同期関数です。
+    if (fetchInFlightRef.current) return;//すでにデータ取得中の場合は何もしない
+    fetchInFlightRef.current = true;//データ取得中フラグを立てる
 
     try {
-      const cached = restoreCachedData();
-      if (cached) {
-        setGroups(cached.groups);
-        setCoords(cached.coords);
-        setLoading(false);
+      const cached = restoreCachedData();//キャッシュされたデータを復元する関数を呼び出して、キャッシュされたデータを取得する。キャッシュされたデータが存在しない場合はnullを返す。
+      if (cached) {//キャッシュされたデータが存在する場合は、キャッシュされたデータを使って画面表示用のステートを更新する。
+        setGroups(cached.groups);//キャッシュされたデータのグループ情報をステートに設定する
+        setCoords(cached.coords);//キャッシュされたデータの座標情報をステートに設定する
+        setLoading(false);//キャッシュされたデータを使って画面表示用のステートを更新した後は、ローディング状態をfalseに設定する。これで最新のデータが取得されるまでの間、キャッシュされたデータを表示することができる。
       } else {
-        setLoading(true);
+        setLoading(true);//キャッシュされたデータが存在しない場合は、ローディング状態をtrueに設定する。これで最新のデータが取得されるまでの間、ローディング表示をすることができる。
       }
 
-      const res = await fetch(GAS_API_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-      const data = await res.json();
+      const res = await fetch(GAS_API_URL, { cache: 'no-store' });//GASから団体データ・座標・更新情報をまとめて取得するためのfetch関数を呼び出す。cache: 'no-store'は、ブラウザのキャッシュを使わずに最新のデータを取得するためのオプションです。
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);//HTTPステータスコードが200番台でない場合は、エラーを投げる。これにより、fetch関数が失敗した場合にcatchブロックでエラー処理を行うことができる。つまり、HTTPステータスコードが200番台でない場合は、データ取得に失敗したと判断することができる。httpステータスコードとは、HTTP通信の結果を示す3桁の数字です。200番台は成功、400番台はクライアントエラー、500番台はサーバーエラーを示します。
+      const data = await res.json();//GASから取得したデータをJSON形式でパースする。これにより、GASから取得したデータをJavaScriptのオブジェクトとして扱うことができる。
 
-      const coordsCategoryMap: Record<string, string> = {};
+      const coordsCategoryMap: Record<string, string> = {};//座標データのカテゴリを格納するためのオブジェクト。キーは団体名、値はカテゴリ名です。これにより、座標データとグループデータを結びつけることができます。
 
-      const coordsRows = (data.coords || []).slice(1);
-      const parsedCoords: Coordinate[] = coordsRows.filter((row: any[]) => row && row[0] && row[1]).map((row: any[]) => {
-        const groupName = String(row[0]).trim();
-        const categoryRaw = row[5] ? String(row[5]).trim() : (row[4] ? String(row[4]).trim() : "");
-        const category = normalizeCategoryValue(categoryRaw);
-        if (groupName && category) {
-          coordsCategoryMap[groupName] = category;
+      const coordsRows = (data.coords || []).slice(1);//GASから取得した座標データの2行目以降を取得する。1行目はヘッダー行なのでスキップする。これにより、座標データの配列を取得することができます。
+      const parsedCoords: Coordinate[] = coordsRows.filter((row: any[]) => row && row[0] && row[1]).map((row: any[]) => {//座標データの配列を整形する。rowは、座標データの1行分を表す配列です。row[0]は団体名、row[1]は場所、row[2]はX座標、row[3]はY座標、row[4]はカテゴリ（旧）、row[5]はカテゴリ（新）です。
+        const groupName = String(row[0]).trim();//団体名を取得する。row[0]が存在しない場合は空文字を返す。trim()は、文字列の前後の空白を削除するメソッドです。
+        const categoryRaw = (() => {
+          const value = row[5] != null ? String(row[5]).trim() : '';
+          if (value && !/(\.(png|jpe?g|webp|svg|avif)|logo|ロゴ)/i.test(value)) return value;
+          return '';
+        })();
+        const category = normalizeCategoryValue(categoryRaw || 'その他');
+        if (groupName && category) {//団体名とカテゴリが存在する場合は、coordsCategoryMapに団体名とカテゴリを格納する。これにより、座標データとグループデータを結びつけることができます。
+          coordsCategoryMap[groupName] = category;//団体名とカテゴリを格納する。これにより、座標データとグループデータを結びつけることができます。
         }
-        return {
-          groupName: groupName,
-          location: getUnifiedLocationGroup(String(row[1])),
-          x: parseFloat(row[2]) || 50,
-          y: parseFloat(row[3]) || 50,
-          category: category
+        return {//座標データのオブジェクトを返す。Coordinate型のオブジェクトです。
+          groupName: groupName,//団体名を格納する。row[0]が存在しない場合は空文字を返す。
+          location: getUnifiedLocationGroup(String(row[1])),//場所を取得する。row[1]が存在しない場合は空文字を返す。
+          x: parseFloat(row[2]) || 50,//X座標を取得する。row[2]が存在しない場合は50を返す。parseFloatは、文字列を浮動小数点数に変換する関数です。
+          y: parseFloat(row[3]) || 50,//Y座標を取得する。row[3]が存在しない場合は50を返す。parseFloatは、文字列を浮動小数点数に変換する関数です。
+          category: category//カテゴリを格納する。normalizeCategoryValueで正規化されたカテゴリ名を返す。
         };
       });
-      setCoords(parsedCoords);
+      setCoords(parsedCoords);//座標データをステートに設定する。これにより、マップ上に団体の位置を表示することができます。
 
-      const updatesRows = (data.updates || []).slice(1);
-      const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};
+      const updatesRows = (data.updates || []).slice(1);//GASから取得した更新情報の2行目以降を取得する。1行目はヘッダー行なのでスキップする。これにより、更新情報の配列を取得することができます。
+      const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};//最新の更新情報を格納するためのオブジェクト。キーは団体名、値は待ち時間、コメント、更新時刻を格納するオブジェクトです。これにより、団体ごとの最新の更新情報を取得することができます。
       
-      updatesRows.forEach((row: any[]) => {
-        if (!row || row.length < 2) return;
-        const timestamp = String(row[0]), name = String(row[1]), waiting = String(row[2]), comment = String(row[3]);
-        if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };
+      updatesRows.forEach((row: any[]) => {//更新情報の配列をループ処理する。rowは、更新情報の1行分を表す配列です。row[0]は更新時刻、row[1]は団体名、row[2]は待ち時間、row[3]はコメントです。
+        if (!row || row.length < 2) return;//rowが存在しない場合や、rowの長さが2未満の場合は何もしない。つまり、団体名が存在しない場合はスキップする。
+        const timestamp = String(row[0]), name = String(row[1]), waiting = String(row[2]), comment = String(row[3]);//更新時刻、団体名、待ち時間、コメントを取得する。row[0]が存在しない場合は空文字を返す。row[1]が存在しない場合は空文字を返す。row[2]が存在しない場合は空文字を返す。row[3]が存在しない場合は空文字を返す。
+        if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };//団体名が存在する場合は、latestUpdatesに団体名と待ち時間、コメント、更新時刻を格納する。待ち時間が存在しない場合は「ー」を返す。コメントが存在しない場合は空文字を返す。更新時刻が存在しない場合は空文字を返す。
       });
 
-      const groupsRows = (data.groups || []).slice(1);
-      let mergedGroups: Group[] = groupsRows.filter((row: any[]) => row && row.length > 1 && row[1]).map((row: any[]) => {
-        const name = String(row[1]).trim();
-        const category = normalizeCategoryValue(coordsCategoryMap[name] || (row[5] ? String(row[5]).trim() : "その他"));
+      const groupsRows = (data.groups || []).slice(1);//GASから取得した団体データの2行目以降を取得する。1行目はヘッダー行なのでスキップする。これにより、団体データの配列を取得することができます。
+      let mergedGroups: Group[] = groupsRows.filter((row: any[]) => row && row.length > 1 && row[1]).map((row: any[]) => {//団体データの配列を整形する。rowは、団体データの1行分を表す配列です。row[0]はID、row[1]は団体名、row[2]は紹介文、row[3]は場所、row[4]はロゴ画像URL、row[5]はカテゴリです。
+        const name = String(row[1]).trim();//団体名を取得する。row[1]が存在しない場合は空文字を返す。trim()は、文字列の前後の空白を削除するメソッドです。
+        const coordsCategory = normalizeCategoryValue(coordsCategoryMap[name] || 'その他');
+
         return {
           name: name,
           description: row[2] ? String(row[2]) : "紹介文はまだありません。",
@@ -601,7 +629,7 @@ export default function App() {//アプリを動かすためのコード
           waitingTime: latestUpdates[name] ? latestUpdates[name].waiting : "ー",
           comment: latestUpdates[name] ? latestUpdates[name].comment : "",
           lastUpdated: latestUpdates[name] ? latestUpdates[name].time : "",
-          category: category || "その他"
+          category: coordsCategory || "その他"
         };
       });
 
@@ -777,7 +805,7 @@ export default function App() {//アプリを動かすためのコード
               }}
               className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs transition active:scale-95 whitespace-nowrap shadow-sm ring-1 ring-blue-100"
             >
-              📖 使い方
+              📖 詳細ガイド
             </button>
             <button onClick={fetchData} disabled={loading} className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-sm">
               <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
@@ -1037,6 +1065,31 @@ export default function App() {//アプリを動かすためのコード
           )}
         </div>
 
+        <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-2xl p-4 space-y-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-xs font-black text-sky-900 tracking-wide">👀 すぐ見える使い方</h3>
+              <p className="text-[11px] text-sky-700 mt-1">1. 検索や絞り込みで候補を出す → 2. ピンまたは一覧をタップ → 3. 右上の更新で最新化</p>
+            </div>
+            <button
+              onClick={() => setShowGuide(!showGuide)}
+              className="self-start md:self-auto rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 hover:bg-sky-50 transition"
+            >
+              {showGuide ? '詳細ガイドを閉じる' : '詳細ガイドを開く'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {Object.entries(WAITING_LEVEL_MEANINGS).map(([level, meaning]) => (
+              <div key={level} className="rounded-xl border border-sky-100 bg-white px-2.5 py-2 text-center shadow-sm">
+                <p className="text-[10px] font-black text-sky-700">Lv.{level}</p>
+                <p className="text-[11px] font-bold text-slate-800 leading-tight mt-0.5">{meaning.label}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{meaning.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* 🗺️ マップコンテナ */}
         {currentMapSources && (
           <div ref={mapContainerRef} className={`bg-white border rounded-xl p-4 md:p-6 shadow-sm space-y-4 scroll-mt-20 transition-all ${measureMode ? 'border-purple-400 ring-2 ring-purple-100' : 'border-slate-200'}`}>
@@ -1167,15 +1220,24 @@ export default function App() {//アプリを動かすためのコード
                       <div className="text-right">
                         {(() => {
                           const waitingInfo = getWaitingDisplayInfo(highlightedGroup.waitingTime);
+                          const waitingMeaning = getWaitingMeaning(highlightedGroup.waitingTime);
                           if (waitingInfo.kind === 'numeric') {
                             return (
-                              <div className="flex items-baseline gap-0.5">
-                                <span className="text-xs font-bold text-amber-700">レベル</span>
-                                <span className="text-3xl font-black text-amber-600">{waitingInfo.displayText}</span>
+                              <div className="flex flex-col items-end leading-tight">
+                                <div className="flex items-baseline gap-0.5">
+                                  <span className="text-xs font-bold text-amber-700">レベル</span>
+                                  <span className="text-3xl font-black text-amber-600">{waitingInfo.displayText}</span>
+                                </div>
+                                <span className="text-[11px] font-bold text-amber-700">{waitingMeaning.label}</span>
                               </div>
                             );
                           }
-                          return <span className={`text-sm font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                          return (
+                            <div className="flex flex-col items-end leading-tight">
+                              <span className={`text-sm font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
+                              <span className="text-[10px] font-semibold text-slate-500">{waitingMeaning.label}</span>
+                            </div>
+                          );
                         })()}
                       </div>
                     </div>
@@ -1251,15 +1313,24 @@ export default function App() {//アプリを動かすためのコード
                         <div className="text-right flex-shrink-0">
                           {(() => {
                             const waitingInfo = getWaitingDisplayInfo(group.waitingTime);
+                            const waitingMeaning = getWaitingMeaning(group.waitingTime);
                             if (waitingInfo.kind === 'numeric') {
                               return (
-                                <div className="flex items-baseline gap-0.5">
-                                  <span className="text-[10px] font-bold text-slate-400">Lv.</span>
-                                  <span className="text-xl font-black text-orange-500">{waitingInfo.displayText}</span>
+                                <div className="flex flex-col items-end leading-tight">
+                                  <div className="flex items-baseline gap-0.5">
+                                    <span className="text-[10px] font-bold text-slate-400">Lv.</span>
+                                    <span className="text-xl font-black text-orange-500">{waitingInfo.displayText}</span>
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-slate-500">{waitingMeaning.label}</span>
                                 </div>
                               );
                             }
-                            return <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                            return (
+                              <div className="flex flex-col items-end leading-tight">
+                                <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
+                                <span className="text-[10px] font-semibold text-slate-500">{waitingMeaning.label}</span>
+                              </div>
+                            );
                           })()}
                         </div>
                       </div>
@@ -1333,15 +1404,24 @@ export default function App() {//アプリを動かすためのコード
               <div className="text-right">
                 {(() => {
                   const waitingInfo = getWaitingDisplayInfo(selectedGroupInfo.waitingTime);
+                  const waitingMeaning = getWaitingMeaning(selectedGroupInfo.waitingTime);
                   if (waitingInfo.kind === 'numeric') {
                     return (
-                      <div className="flex items-baseline gap-0.5">
-                        <span className="text-xs font-bold text-orange-700">レベル</span>
-                        <span className="text-2xl font-black text-orange-600">{waitingInfo.displayText}</span>
+                      <div className="flex flex-col items-end leading-tight">
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="text-xs font-bold text-orange-700">レベル</span>
+                          <span className="text-2xl font-black text-orange-600">{waitingInfo.displayText}</span>
+                        </div>
+                        <span className="text-[11px] font-bold text-orange-700">{waitingMeaning.label}</span>
                       </div>
                     );
                   }
-                  return <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>;
+                  return (
+                    <div className="flex flex-col items-end leading-tight">
+                      <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
+                      <span className="text-[10px] font-semibold text-orange-700">{waitingMeaning.label}</span>
+                    </div>
+                  );
                 })()}
               </div>
             </div>
