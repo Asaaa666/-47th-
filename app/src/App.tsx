@@ -431,6 +431,8 @@ export default function App() {//アプリを動かすためのコード
   const [pendingScroll, setPendingScroll] = useState<{ type: 'map'; groupName: string } | null>(null);//マップへのスクロールが保留されているかどうかを管理するためのステート。初期値はnullで、スクロールが保留されると{type: 'map', groupName: string}の形式で情報が格納されます。
 
   const mapContainerRef = useRef<HTMLDivElement>(null);//マップコンテナの参照を保持するためのuseRefフック。初期値はnullで、マップコンテナがレンダリングされるとHTMLDivElementの参照が格納されます。
+  const guideDetailRef = useRef<HTMLDivElement>(null);//詳細ガイドセクションにスクロールするための参照
+  const shouldScrollGuideDetailRef = useRef(false);//詳細ガイドを開いた直後だけ自動スクロールするためのフラグ
   const fetchInFlightRef = useRef(false);//重複したデータ取得を防ぐためのフラグ
   const DATA_CACHE_TTL_MS = 5 * 60 * 1000;// 5分以上古いデータだけを再取得し、Vercel側のアクセス量を抑える
   const DATA_CACHE_KEY = 'festival-data-cache-v1';// データキャッシュのキー名
@@ -478,6 +480,13 @@ export default function App() {//アプリを動かすためのコード
     const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');//新しいURLのパスとクエリパラメータを作成します。window.location.pathnameは、現在のURLのパス部分を取得します。params.toString()は、URLSearchParamsオブジェクトを文字列に変換します。クエリパラメータが存在する場合は、'?'を付けて結合します。
     window.history.replaceState(null, '', newRelativePathQuery);//ブラウザの履歴を置き換えます。window.history.replaceState()メソッドは、現在の履歴エントリを新しい状態に置き換えます。これにより、ページのリロードや戻るボタンの挙動に影響を与えずにURLを更新できます。
   }, [filterLocation]);//filterLocationが変更されるたびに実行されます。
+
+  useEffect(() => {
+    if (!showGuide || !shouldScrollGuideDetailRef.current) return;
+
+    shouldScrollGuideDetailRef.current = false;
+    guideDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showGuide]);
 
   // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
   const activePins = coords.filter(pin => pin.location === filterLocation);//現在のフィルターに一致する座標を取得します。
@@ -854,9 +863,9 @@ export default function App() {//アプリを動かすためのコード
           </div>
         )}
 
-       {/* 📖 使い方ガイド */}
+        {/* 📖 使い方ガイド */}
 {showGuide && (
-  <div className="bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-slate-50 border-2 border-blue-200 rounded-2xl p-5 md:p-6 shadow-md space-y-5 animate-in fade-in duration-200">
+      <div ref={guideDetailRef} className="bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-slate-50 border-2 border-blue-200 rounded-2xl p-5 md:p-6 shadow-md space-y-5 animate-in fade-in duration-200 scroll-mt-24">
     
     {/* ヘッダー */}
     <div className="flex items-center justify-between border-b border-blue-200 pb-3">
@@ -1072,10 +1081,18 @@ export default function App() {//アプリを動かすためのコード
               <p className="text-[11px] text-sky-700 mt-1">1. 検索や絞り込みで候補を出す → 2. ピンまたは一覧をタップ → 3. 右上の更新で最新化</p>
             </div>
             <button
-              onClick={() => setShowGuide(!showGuide)}
+              onClick={() => {
+                if (showGuide) {
+                  setShowGuide(false);
+                  return;
+                }
+
+                shouldScrollGuideDetailRef.current = true;
+                setShowGuide(true);
+              }}
               className="self-start md:self-auto rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 hover:bg-sky-50 transition"
             >
-              {showGuide ? '詳細ガイドを閉じる' : '詳細ガイドを開く'}
+              {showGuide ? '詳細ガイドを閉じる' : '5段階評価の詳細を見る'}
             </button>
           </div>
 
@@ -1125,45 +1142,59 @@ export default function App() {//アプリを動かすためのコード
                     />
                     
                     {/* 既存の団体ピン */}
-                    {activePins.map((pin, i) => {
-                      const groupInfo = groups.find(g => g.name === pin.groupName);
-                      const theme = getPinTheme(groupInfo?.waitingTime || "ー");
-                      const isTarget = highlightedGroupName === pin.groupName;
-                      const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
-                      void candidates;
-                      
-                      return (
-                        <div 
-                          key={i} 
-                          onClick={(e) => {
-                            if (!measureMode) {
-                              e.stopPropagation();
-                              handleItemClick(pin.groupName, 'map');
-                            }
-                          }} 
-                          className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all ${
-                            measureMode ? 'pointer-events-none opacity-60' : 'cursor-pointer group'
-                          } ${isTarget ? 'scale-125 z-40' : 'hover:scale-125 z-20 hover:z-30'}`} 
-                          style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
-                        >
-                          <div className="relative flex items-center justify-center">
-                            <div className={`w-8 h-8 md:w-14 md:h-14 rounded-full bg-white border-2 md:border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${
-                              isTarget 
-                                ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.9)] animate-pulse' 
-                                : theme.border
-                            }`}>
-                              <LogoImage originalLogo={groupInfo?.logo || ''} groupName={groupInfo?.name || pin.groupName} alt={pin.groupName} className="w-full h-full object-cover" fallbackClassName="text-[10px] md:text-xs font-bold text-slate-500" />
-                            </div>
+{activePins.map((pin, i) => {
+  const groupInfo = groups.find(g => g.name === pin.groupName);
+  const theme = getPinTheme(groupInfo?.waitingTime || "ー");
+  const isTarget = highlightedGroupName === pin.groupName;
+  const candidates = groupInfo ? getLogoSrcCandidates(groupInfo.logo, groupInfo.name) : [];
+  void candidates;
 
-                            {!measureMode && (
-                              <div className={`absolute bottom-full mb-1 px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] md:text-xs font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${isTarget ? 'opacity-100 z-50 bg-yellow-500 text-slate-900' : 'opacity-0 group-hover:opacity-100'}`}>
-                                {pin.groupName}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+  // 💡 ピンがマップの端にあるか判定
+  const isTopEdge = pin.y < 30;    // 上端付近（下に吹き出す）
+  const isLeftEdge = pin.x < 20;   // 左端付近（右寄りに表示）
+  const isRightEdge = pin.x > 80;  // 右端付近（左寄りに表示）
+
+  // 💡 位置調整用クラスを決定
+  const verticalClass = isTopEdge ? 'top-full mt-1' : 'bottom-full mb-1';
+  let horizontalClass = 'left-1/2 -translate-x-1/2'; // 基本は中央
+  if (isLeftEdge) horizontalClass = 'left-0 translate-x-0';
+  if (isRightEdge) horizontalClass = 'right-0 translate-x-0';
+
+  return (
+    <div 
+      key={i} 
+      onClick={(e) => {
+        if (!measureMode) {
+          e.stopPropagation();
+          handleItemClick(pin.groupName, 'map');
+        }
+      }} 
+      className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all ${
+        measureMode ? 'pointer-events-none opacity-60' : 'cursor-pointer group'
+      } ${isTarget ? 'scale-125 z-40' : 'hover:scale-125 z-20 hover:z-30'}`} 
+      style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+    >
+      <div className="relative flex items-center justify-center">
+        <div className={`w-8 h-8 md:w-14 md:h-14 rounded-full bg-white border-2 md:border-4 shadow-md overflow-hidden flex items-center justify-center relative transition-all ${
+          isTarget 
+            ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.9)] animate-pulse' 
+            : theme.border
+        }`}>
+          <LogoImage originalLogo={groupInfo?.logo || ''} groupName={groupInfo?.name || pin.groupName} alt={pin.groupName} className="w-full h-full object-cover" fallbackClassName="text-[10px] md:text-xs font-bold text-slate-500" />
+        </div>
+
+        {!measureMode && (
+          /* 💡 位置調整クラス（verticalClass, horizontalClass）を反映 */
+          <div className={`absolute px-2 py-0.5 bg-slate-900/90 text-white rounded text-[10px] md:text-xs font-bold whitespace-nowrap shadow-md pointer-events-none transition-opacity ${verticalClass} ${horizontalClass} ${
+            isTarget ? 'opacity-100 z-50 bg-yellow-500 text-slate-900' : 'opacity-0 group-hover:opacity-100'
+          }`}>
+            {pin.groupName}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+})}
 
                     {/* 🎯 測定モード時の計測マーカー */}
                     {measureMode && clickedCoord && (
