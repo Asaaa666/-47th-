@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';//アプリを動かす使�
 import { normalizeCategoryValue, getUnifiedLocationGroup, matchesSearchQuery } from './searchUtils';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxkejAhnIoPCg5EncAM2NT4YfbTOX4dJXkhCQbKHSsIEF2uqnZdbCLLy1qziCrOBZv6vw/exec";//読み込むスプレットシートを選択するコード
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyUoVxcp4mqV50FmMx0H3dMn70TpoaNGbFAQ-LQphUZuA-lUbciQus4fMtgI70R136NFQ/exec";//読み込むスプレットシートを選択するコード
 
 interface Group {//団体の情報を格納するためのインターフェース
   name: string;//団体名
@@ -309,11 +309,11 @@ const getWaitingSortScore = (waitingTime: string | undefined): number => {
 };
 
 const WAITING_LEVEL_MEANINGS: Record<number, { label: string; detail: string }> = {
-  1: { label: 'とても空いている', detail: '待ち時間ほぼなし' },
-  2: { label: 'かなり空いている', detail: '短時間で入場しやすい' },
-  3: { label: 'ふつう', detail: '標準的な混雑' },
-  4: { label: 'かなり混雑', detail: '待ち時間が発生しやすい' },
-  5: { label: 'とても混雑', detail: '長めの待ち時間の可能性' },
+  1: { label: 'とても空いている', detail:'目安 0分' },
+  2: { label: 'かなり空いている', detail: '目安 1-3分' },
+  3: { label: 'ふつう', detail: '目安 4-7分' },
+  4: { label: 'かなり混雑', detail: '目安 8-14分' },
+  5: { label: 'とても混雑', detail: '目安 15分以上' },
 };
 
 const getWaitingMeaning = (waitingTime: string | undefined): { label: string; detail: string } => {
@@ -408,6 +408,7 @@ export default function App() {//アプリを動かすためのコード
   const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
   const [coords, setCoords] = useState<Coordinate[]>([]);//setCoordsとは、座標の情報を格納するためのステート変数です。初期値は空の配列です。
   const [loading, setLoading] = useState(true);//setLoadingとは、データの読み込み中かどうかを示すためのステート変数です。初期値はtrueです。
+  const [loadError, setLoadError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');//setSearchTermとは、検索キーワードを格納するためのステート変数です。初期値は空文字です。ステート変数とは、Reactコンポーネント内で状態を管理するための変数です。useStateフックを使って定義されます。useStateフックとは、Reactで状態を管理するためのフックです。useStateフックを使うことで、コンポーネント内で状態を持つことができます。useStateフックは、初期値を引数に取り、現在の状態と状態を更新するための関数を返します。
   
   const [filterLocation, setFilterLocation] = useState(() => {//setFilterLocationとは、場所のフィルターを格納するためのステート変数です。初期値はURLのクエリパラメータから取得されます。
@@ -434,7 +435,6 @@ export default function App() {//アプリを動かすためのコード
   const guideDetailRef = useRef<HTMLDivElement>(null);//詳細ガイドセクションにスクロールするための参照
   const shouldScrollGuideDetailRef = useRef(false);//詳細ガイドを開いた直後だけ自動スクロールするためのフラグ
   const fetchInFlightRef = useRef(false);//重複したデータ取得を防ぐためのフラグ
-  const DATA_CACHE_TTL_MS = 5 * 60 * 1000;// 5分以上古いデータだけを再取得し、Vercel側のアクセス量を抑える
   const DATA_CACHE_KEY = 'festival-data-cache-v1';// データキャッシュのキー名
 
   const restoreCachedData = (): { savedAt: number; groups: Group[]; coords: Coordinate[] } | null => {//キャッシュされたデータを復元する関数。localStorageからデータを取得し、JSON.parseでオブジェクトに変換する。データが存在しない場合や、形式が不正な場合はnullを返す。
@@ -444,9 +444,6 @@ export default function App() {//アプリを動かすためのコード
 
       const cached = JSON.parse(cachedRaw) as { savedAt?: number; groups?: Group[]; coords?: Coordinate[] };//  キャッシュされたデータをJSON.parseでオブジェクトに変換する。型アサーションで、savedAt、groups、coordsのプロパティが存在することを保証する。つまり、savedAtはnumber型、groupsはGroup[]型、coordsはCoordinate[]型であることを保証する。つまりさまざまな種類のデータを格納できるようにするために、型アサーションを使っている。型アサーションとは、TypeScriptで型を明示的に指定することです。型アサーションを使うことで、TypeScriptの型推論を上書きして、より具体的な型を指定することができます。
       if (!cached?.savedAt || !Array.isArray(cached.groups) || !Array.isArray(cached.coords)) return null;//  キャッシュされたデータの形式が不正な場合はnullを返す。savedAtが存在しない場合、groupsが配列でない場合、coordsが配列でない場合はnullを返す。
-
-      const isFresh = Date.now() - cached.savedAt < DATA_CACHE_TTL_MS;//  キャッシュされたデータが新鮮かどうかを判定する。現在時刻とキャッシュされたデータの保存時刻の差が、DATA_CACHE_TTL_MSより小さい場合は新鮮と判定する。つまり、5分以上古いデータは再取得するようにする。
-      if (!isFresh) return null;//  キャッシュされたデータが古い場合はnullを返す。つまり、5分以上古いデータは再取得するようにする。
 
       return {
         savedAt: cached.savedAt,//  キャッシュされたデータの保存時刻を返す。
@@ -556,7 +553,7 @@ export default function App() {//アプリを動かすためのコード
   const MAP_ASSET_VERSION = '20260804-2';// Vercel やブラウザのキャッシュで古い WebP が残らないよう、マップ画像 URL にはバージョンを付けて更新を強制します。
 
   const getMapImageSources = (buttonName: string): string | null => {//校内マップは WebP だけを読み込みます。
-    if (!buttonName || buttonName === 'すべて' || buttonName === 'その他' || buttonName === '屋台') return null;
+    if (!buttonName || buttonName === 'すべて' || buttonName === 'その他') return null;
 
     const mapImageMap: Record<string, string> = {
       '中学・高校棟 1階': `/1階 (1).webp?v=${MAP_ASSET_VERSION}`,
@@ -566,7 +563,9 @@ export default function App() {//アプリを動かすためのコード
       '中学棟 5階': `/中学棟五階.webp?v=${MAP_ASSET_VERSION}`,
       '高校棟 3階': `/高校棟三階.webp?v=${MAP_ASSET_VERSION}`,
       '高校棟 4階': `/高校棟四階.webp?v=${MAP_ASSET_VERSION}`,
-      '高校棟 5階': `/高校棟五階.webp?v=${MAP_ASSET_VERSION}`
+      '高校棟 5階': `/高校棟五階.webp?v=${MAP_ASSET_VERSION}`,
+      '打越アリーナ': `/打越アリーナ.webp?v=${MAP_ASSET_VERSION}`,
+      '屋台': `/屋台.webp?v=${MAP_ASSET_VERSION}`
     };
 
     return mapImageMap[buttonName] || null;//ボタン名に対応するマップ画像のURLを返す。対応するマップ画像がない場合はnullを返す。
@@ -576,6 +575,7 @@ export default function App() {//アプリを動かすためのコード
   const fetchData = async () => {//GASから団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する非同期関数です。
     if (fetchInFlightRef.current) return;//すでにデータ取得中の場合は何もしない
     fetchInFlightRef.current = true;//データ取得中フラグを立てる
+    setLoadError(false);
 
     try {
       const cached = restoreCachedData();//キャッシュされたデータを復元する関数を呼び出して、キャッシュされたデータを取得する。キャッシュされたデータが存在しない場合はnullを返す。
@@ -587,7 +587,25 @@ export default function App() {//アプリを動かすためのコード
         setLoading(true);//キャッシュされたデータが存在しない場合は、ローディング状態をtrueに設定する。これで最新のデータが取得されるまでの間、ローディング表示をすることができる。
       }
 
-      const res = await fetch(GAS_API_URL, { cache: 'no-store' });//GASから団体データ・座標・更新情報をまとめて取得するためのfetch関数を呼び出す。cache: 'no-store'は、ブラウザのキャッシュを使わずに最新のデータを取得するためのオプションです。
+      let res: Response | undefined;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+        try {
+          res = await fetch(GAS_API_URL, { cache: 'no-store', signal: controller.signal });
+          if (res.ok) break;
+          lastError = new Error(`HTTP Error: ${res.status}`);
+        } catch (error) {
+          lastError = error;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+        if (attempt < 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 400));
+        }
+      }
+      if (!res?.ok) throw lastError ?? new Error('データを取得できませんでした');
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);//HTTPステータスコードが200番台でない場合は、エラーを投げる。これにより、fetch関数が失敗した場合にcatchブロックでエラー処理を行うことができる。つまり、HTTPステータスコードが200番台でない場合は、データ取得に失敗したと判断することができる。httpステータスコードとは、HTTP通信の結果を示す3桁の数字です。200番台は成功、400番台はクライアントエラー、500番台はサーバーエラーを示します。
       const data = await res.json();//GASから取得したデータをJSON形式でパースする。これにより、GASから取得したデータをJavaScriptのオブジェクトとして扱うことができる。
 
@@ -629,7 +647,7 @@ export default function App() {//アプリを動かすためのコード
         const name = String(row[1]).trim();//団体名を取得する。row[1]が存在しない場合は空文字を返す。trim()は、文字列の前後の空白を削除するメソッドです。
         const coordsCategory = normalizeCategoryValue(coordsCategoryMap[name] || 'その他');
 
-        return {
+        return {//ここからは実際に表示される画面を作るプログラム、ここから先は追記できるときに追記します
           name: name,
           description: row[2] ? String(row[2]) : "紹介文はまだありません。",
           location: row[3] ? String(row[3]) : "校内",
@@ -669,6 +687,7 @@ export default function App() {//アプリを動かすためのコード
       persistCachedData(mergedGroups, parsedCoords);
     } catch (error) {
       console.error("データの取得に失敗しました:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
       fetchInFlightRef.current = false;
@@ -825,6 +844,19 @@ export default function App() {//アプリを動かすためのコード
       </header>
 
       <main className="max-w-6xl mx-auto px-4 mt-6 space-y-6 relative z-10">
+        {loadError && groups.length === 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center shadow-sm">
+            <p className="text-sm font-bold text-amber-900">団体情報を読み込めませんでした</p>
+            <p className="mt-1 text-xs text-amber-800">通信環境を確認して、もう一度お試しください。</p>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50"
+            >
+              再試行
+            </button>
+          </div>
+        )}
 
         {/* 🎯 座標測定モードのアラートツールバー */}
         {measureMode && (
@@ -932,7 +964,7 @@ export default function App() {//アプリを動かすためのコード
             レベル 1
           </span>
           <span className="font-bold text-slate-800 text-xs">とても空いている</span>
-          <span className="text-[10px] text-slate-400 mt-0.5">待ち時間なし・即入場</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">目安　0分</span>
         </div>
 
         {/* レベル 2 */}
@@ -941,7 +973,7 @@ export default function App() {//アプリを動かすためのコード
             レベル 2
           </span>
           <span className="font-bold text-slate-800 text-xs">かなり空いている</span>
-          <span className="text-[10px] text-slate-400 mt-0.5">スムーズに閲覧可能</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">目安 1-3分</span>
         </div>
 
         {/* レベル 3 */}
@@ -950,7 +982,7 @@ export default function App() {//アプリを動かすためのコード
             レベル 3
           </span>
           <span className="font-bold text-slate-800 text-xs">問題なく回れる</span>
-          <span className="text-[10px] text-slate-400 mt-0.5">標準的な賑わい</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">目安 4-7分</span>
         </div>
 
         {/* レベル 4 */}
@@ -959,7 +991,7 @@ export default function App() {//アプリを動かすためのコード
             レベル 4
           </span>
           <span className="font-bold text-slate-800 text-xs">かなり混んでいる</span>
-          <span className="text-[10px] text-slate-400 mt-0.5">少し待ち時間あり</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">目安　8-14分</span>
         </div>
 
         {/* レベル 5 */}
@@ -968,7 +1000,7 @@ export default function App() {//アプリを動かすためのコード
             レベル 5
           </span>
           <span className="font-bold text-slate-800 text-xs">とても混んでいる</span>
-          <span className="text-[10px] text-slate-400 mt-0.5">長蛇の列・入場規制</span>
+          <span className="text-[10px] text-slate-400 mt-0.5">目安 15分以上</span>
         </div>
 
         {/* 休止中 */}
