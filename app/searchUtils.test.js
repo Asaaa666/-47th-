@@ -22,13 +22,11 @@ test('matchesSearchQuery accepts valid partial matches', () => {
     description: '植物や昆虫を展示します。',
     category: '展示',
     location: '生物特別教室',
-    comment: '今日は混んでいます',
   };
 
   assert.equal(matchesSearchQuery(group, '生物'), true);
   assert.equal(matchesSearchQuery(group, '生物 部'), true);
   assert.equal(matchesSearchQuery(group, '生物特別教室'), true);
-  assert.equal(matchesSearchQuery(group, '混んでいます'), true);
 });
 
 test('matchesSearchQuery rejects unrelated text', () => {
@@ -37,7 +35,6 @@ test('matchesSearchQuery rejects unrelated text', () => {
     description: '古本を販売しています。',
     category: '展示',
     location: '本校舎教室',
-    comment: '静かに閲覧できます',
   };
 
   assert.equal(matchesSearchQuery(group, '生物さわ'), false);

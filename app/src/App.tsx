@@ -11,7 +11,6 @@ interface Group {//団体の情報を格納するためのインターフェー�
   logo: string;//団体のロゴ画像のURL
   status: '更新済' | '未更新';//団体の情報が更新されているかどうかのステータス
   waitingTime: string;//団体の待ち時間
-  comment: string;//団体に関するコメント(削除済み)
   lastUpdated: string;//団体の情報が最後に更新された日時
   category: string;//団体のカテゴリ(展示、屋台、ステージなど)
 }
@@ -634,12 +633,12 @@ export default function App() {//アプリを動かすためのコード
       setCoords(parsedCoords);//座標データをステートに設定する。これにより、マップ上に団体の位置を表示することができます。
 
       const updatesRows = (data.updates || []).slice(1);//GASから取得した更新情報の2行目以降を取得する。1行目はヘッダー行なのでスキップする。これにより、更新情報の配列を取得することができます。
-      const latestUpdates: Record<string, { waiting: string; comment: string; time: string }> = {};//最新の更新情報を格納するためのオブジェクト。キーは団体名、値は待ち時間、コメント、更新時刻を格納するオブジェクトです。これにより、団体ごとの最新の更新情報を取得することができます。
+      const latestUpdates: Record<string, { waiting: string; time: string }> = {};//最新の更新情報を格納するためのオブジェクト。キーは団体名、値は待ち時間と更新時刻を格納します。
       
-      updatesRows.forEach((row: any[]) => {//更新情報の配列をループ処理する。rowは、更新情報の1行分を表す配列です。row[0]は更新時刻、row[1]は団体名、row[2]は待ち時間、row[3]はコメントです。
+      updatesRows.forEach((row: any[]) => {//更新情報の配列をループ処理する。rowは、更新情報の1行分を表す配列です。row[0]は更新時刻、row[1]は団体名、row[2]は待ち時間です。
         if (!row || row.length < 2) return;//rowが存在しない場合や、rowの長さが2未満の場合は何もしない。つまり、団体名が存在しない場合はスキップする。
-        const timestamp = String(row[0]), name = String(row[1]), waiting = String(row[2]), comment = String(row[3]);//更新時刻、団体名、待ち時間、コメントを取得する。row[0]が存在しない場合は空文字を返す。row[1]が存在しない場合は空文字を返す。row[2]が存在しない場合は空文字を返す。row[3]が存在しない場合は空文字を返す。
-        if (name) latestUpdates[name] = { waiting: waiting || "ー", comment: comment || "", time: timestamp || "" };//団体名が存在する場合は、latestUpdatesに団体名と待ち時間、コメント、更新時刻を格納する。待ち時間が存在しない場合は「ー」を返す。コメントが存在しない場合は空文字を返す。更新時刻が存在しない場合は空文字を返す。
+        const timestamp = String(row[0]), name = String(row[1]), waiting = String(row[2]);//更新時刻、団体名、待ち時間を取得する。
+        if (name) latestUpdates[name] = { waiting: waiting || "ー", time: timestamp || "" };//団体名が存在する場合は、latestUpdatesに団体名、待ち時間、更新時刻を格納する。
       });
 
       const groupsRows = (data.groups || []).slice(1);//GASから取得した団体データの2行目以降を取得する。1行目はヘッダー行なのでスキップする。これにより、団体データの配列を取得することができます。
@@ -654,7 +653,6 @@ export default function App() {//アプリを動かすためのコード
           logo: row[4] ? String(row[4]) : "",
           status: latestUpdates[name] ? "更新済" : "未更新",
           waitingTime: latestUpdates[name] ? latestUpdates[name].waiting : "ー",
-          comment: latestUpdates[name] ? latestUpdates[name].comment : "",
           lastUpdated: latestUpdates[name] ? latestUpdates[name].time : "",
           category: coordsCategory || "その他"
         };
@@ -668,7 +666,7 @@ export default function App() {//アプリを動かすためのコード
         mergedGroups.push({
           name: "生物部", description: "生物部です！様々な展示を行っています。ぜひお越しください！", location: "生物特別教室", logo: "肩 生物部ロゴ.png",
           status: bioUpdates ? "更新済" : "未更新", waitingTime: bioUpdates ? latestUpdates[bioUpdates].waiting : "ー",
-          comment: bioUpdates ? latestUpdates[bioUpdates].comment : "", lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : "",
+          lastUpdated: bioUpdates ? latestUpdates[bioUpdates].time : "",
           category: normalizeCategoryValue(coordsCategoryMap["生物部"] || "展示")
         });
       }
@@ -678,7 +676,7 @@ export default function App() {//アプリを動かすためのコード
         mergedGroups.push({
           name: "図書研究部", description: "図書研究部（図書委員会古本バザー）です。面白い本がたくさんあります！", location: "本校舎教室", logo: "図書研究部 ロゴ.png",
           status: libUpdates ? "更新済" : "未更新", waitingTime: libUpdates ? latestUpdates[libUpdates].waiting : "ー",
-          comment: libUpdates ? latestUpdates[libUpdates].comment : "", lastUpdated: libUpdates ? latestUpdates[libUpdates].time : "",
+          lastUpdated: libUpdates ? latestUpdates[libUpdates].time : "",
           category: normalizeCategoryValue(coordsCategoryMap["図書研究部"] || "展示")
         });
       }
@@ -1305,12 +1303,6 @@ export default function App() {//アプリを動かすためのコード
                       </div>
                     </div>
 
-                    {highlightedGroup.comment && (
-                      <div className="bg-white/90 p-3 rounded-lg border border-amber-200 text-xs text-amber-900 font-medium">
-                        💬 {highlightedGroup.comment}
-                      </div>
-                    )}
-
                     <p className="text-xs text-slate-600 leading-relaxed bg-white/60 p-3 rounded-lg border border-amber-100">
                       {highlightedGroup.description}
                     </p>
@@ -1402,11 +1394,6 @@ export default function App() {//アプリを動かすためのコード
                         {group.description}
                       </p>
 
-                      {group.comment && (
-                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-[11px] text-slate-600 line-clamp-1">
-                          💬 {group.comment}
-                        </div>
-                      )}
                     </div>
 
                     <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400 font-medium">
@@ -1488,12 +1475,6 @@ export default function App() {//アプリを動かすためのコード
                 })()}
               </div>
             </div>
-
-            {selectedGroupInfo.comment && (
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700">
-                💬 <span className="font-semibold">{selectedGroupInfo.comment}</span>
-              </div>
-            )}
 
             <div className="space-y-1">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">紹介文</span>

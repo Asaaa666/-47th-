@@ -67,7 +67,6 @@ export const matchesSearchQuery = (group: Record<string, any>, searchTerm: strin
     group.description,
     group.category,
     group.location,
-    group.comment,
     getUnifiedLocationGroup(group.location),
   ].map((value) => normalizeSearchText(value));
 
