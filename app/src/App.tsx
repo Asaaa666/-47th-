@@ -89,16 +89,6 @@ const normalizePublicAssetUrl = (value: string): string => {//public配下の画
   return trimmed.replace(/^\/public\//, '/').replace(/^\/+/, '/');//public配下の画像ファイルのURLを正規化するために、先頭の/public/を/に置換し、先頭のスラッシュを1つに統一する
 };
 
-const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像ファイルから取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
-  import.meta.glob('/public/**/*.{webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
-).filter(Boolean).map(value => normalizePublicAssetUrl(String(value)));//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
-
-const isKnownPublicLogoAsset = (candidate: string): boolean => {
-  if (isAbsoluteLogoReference(candidate)) return false;
-  const normalizedCandidate = normalizePublicAssetUrl(candidate).replace(/^\/+/, '');
-  return PUBLIC_LOGO_ASSET_URLS.some(asset => asset.replace(/^\/+/, '') === normalizedCandidate);
-};
-
 const logoResolutionCacheRef = { current: {} as Record<string, string | null> };//ロゴの解決結果をキャッシュするためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決されたロゴのURLまたはnullです。
 const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };//ロゴの解決中のPromiseを保持するためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決中のPromiseです。
 
@@ -206,12 +196,6 @@ const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<
   }
 
   const promise = (async () => {
-    const knownPublicAsset = candidates.find(isKnownPublicLogoAsset);
-    if (knownPublicAsset) {
-      logoResolutionCacheRef.current[cacheKey] = knownPublicAsset;
-      return knownPublicAsset;
-    }
-
     const maxParallelChecks = 4;
 
     for (let index = 0; index < candidates.length; index += maxParallelChecks) {
