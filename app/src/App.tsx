@@ -119,22 +119,6 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
     });
   };
 
-  const addPublicAssetMatches = (value: string) => {// public 配下に存在する画像のうち、名前やファイル名に一致するものを優先して候補に加える関数です。
-    const trimmed = (value || '').trim();//valueの前後の空白を削除する
-    if (!trimmed) return;//trimmedが空文字の場合は何もしない
-    const rawName = trimmed.replace(/^\/+/, '').replace(/^\.\//, '').split(/[\\/]/).pop() || trimmed;//trimmedの先頭のスラッシュや./を取り除き、最後のスラッシュ以降の文字列を取得する。もし取得できなかった場合はtrimmedをそのまま使用する。
-    const baseName = rawName.replace(/\.[^.]+$/, '');//rawNameの拡張子を取り除いた文字列を取得する。もし拡張子がなかった場合はrawNameをそのまま使用する。
-    const searchTerms = [rawName, baseName, trimmed];//検索対象の文字列を配列に格納する。rawName、baseName、trimmedの順に格納する。
-
-    searchTerms.forEach(term => {//検索対象の文字列を順番に処理する。
-      const match = PUBLIC_LOGO_ASSET_URLS.find(path => {//PUBLIC_LOGO_ASSET_URLSの中から、検索対象の文字列に一致するものを探す。
-        const normalizedPath = path.replace(/^\/+/, '');//pathの先頭のスラッシュを取り除いた文字列を取得する。
-        return normalizedPath === term || normalizedPath.endsWith(`/${term}`);//normalizedPathがtermと完全一致するか、normalizedPathの末尾が/termで終わるかを判定する。
-      });
-      if (match) addCandidate(match);//一致するものが見つかった場合は、addCandidate関数を使って候補に追加する。
-    });
-  };
-
   const name = (groupName || '').trim();//団体名の前後の空白を削除する
   const original = (originalLogo || '').trim();//オリジナルのロゴ画像のURLの前後の空白を削除する
 
@@ -144,15 +128,11 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
     if (aliases?.length) {//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。
       aliases.forEach(alias => addCandidate(alias));//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。aliasをaddCandidate関数を使って候補に追加する。
     }
-    addPublicAssetMatches(key);//LOGO_ALIAS_MAPにkeyが存在する場合は、候補の配列を順番に処理する。keyをaddPublicAssetMatches関数を使って候補に追加する。
   });
 
   if (original) {//オリジナルのロゴ画像のURLが存在する場合は、候補に追加する。
     addCandidate(original);//オリジナルのロゴ画像のURLを候補に追加する。
-    addPublicAssetMatches(original);//オリジナルのロゴ画像のURLを候補に追加する。
   }
-
-  addPublicAssetMatches(name);//団体名を候補に追加する。
 
   const clean = name.replace(/\s+/g, '');//団体名の空白を取り除いた文字列を取得する。
   [
