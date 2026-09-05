@@ -93,6 +93,12 @@ const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像フ
   import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
 ).filter(Boolean).map(value => normalizePublicAssetUrl(String(value)));//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
 
+const isKnownPublicLogoAsset = (candidate: string): boolean => {
+  if (isAbsoluteLogoReference(candidate)) return false;
+  const normalizedCandidate = normalizePublicAssetUrl(candidate).replace(/^\/+/, '');
+  return PUBLIC_LOGO_ASSET_URLS.some(asset => asset.replace(/^\/+/, '') === normalizedCandidate);
+};
+
 const logoResolutionCacheRef = { current: {} as Record<string, string | null> };//ロゴの解決結果をキャッシュするためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決されたロゴのURLまたはnullです。
 const logoResolutionInFlightRef = { current: {} as Record<string, Promise<string | null>> };//ロゴの解決中のPromiseを保持するためのオブジェクトです。キーは「団体名::オリジナルロゴURL」の形式で、値は解決中のPromiseです。
 
@@ -110,9 +116,12 @@ const getLogoSrcCandidates = (originalLogo: string, groupName: string): string[]
     const normalized = trimmed.replace(/#/g, '%23').replace(/&/g, '%26').replace(/\?/g, '%3F');//団体名やロゴ画像のURLに含まれる特殊文字をエンコードする
     const absolute = isAbsoluteLogoReference(normalized);//normalizedが絶対参照かどうかを判定する
     const normalizedForProbe = normalizePublicAssetUrl(normalized);
-    const variants = [normalizedForProbe];//表記ゆれ回収(絶対参照の場合はそのまま、相対参照の場合は / を付けたものと付けないものの2種類を候補に追加する)
+    const webpCandidate = normalizedForProbe.replace(/\.(png|jpe?g)$/i, '.webp');
+    const variants = absolute ? [normalizedForProbe] : [webpCandidate, normalizedForProbe];//表記ゆれ回収。静的画像はWebPを優先し、未変換画像へフォールバックする。
     if (!absolute) {//表記ずれを吸収
+      variants.push(`/${webpCandidate.replace(/^\/+/, '')}`);
       variants.push(`/${normalizedForProbe.replace(/^\/+/, '')}`);//相対参照の場合は、先頭のスラッシュを取り除いたものにスラッシュを付けたものを候補に追加する
+      variants.push(`/${webpCandidate.replace(/^\/+/, '')}`.replace(/^\//, ''));
       variants.push(`/${normalizedForProbe.replace(/^\/+/, '')}`.replace(/^\//, ''));
     }
     variants.forEach(v => {//様々な候補を追加する。
@@ -192,6 +201,12 @@ const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<
   const candidates = Array.from(new Set(getLogoSrcCandidates(originalLogo, groupName)));//ロゴ候補を取得し、重複を除去して高速化する。
 
   const promise = (async () => {
+    const knownPublicAsset = candidates.find(isKnownPublicLogoAsset);
+    if (knownPublicAsset) {
+      logoResolutionCacheRef.current[cacheKey] = knownPublicAsset;
+      return knownPublicAsset;
+    }
+
     const maxParallelChecks = 4;
 
     for (let index = 0; index < candidates.length; index += maxParallelChecks) {
@@ -800,7 +815,7 @@ export default function App() {//アプリを動かすためのコード
           <div className="flex items-center space-x-3 min-w-0">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 shadow-lg shadow-sky-200 ring-2 ring-white">
               <img 
-                src="/logo.jpg" 
+                src="/logo.webp" 
                 alt="打越祭ロゴ" 
                 className="h-9 w-9 object-cover rounded-xl"
               />
