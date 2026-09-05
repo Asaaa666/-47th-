@@ -956,7 +956,7 @@ export default function App() {//アプリを動かすためのコード
         <div>
           <h4 className="font-bold text-xs text-slate-800">3. リアルタイム更新</h4>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
-            データは5分ごとに自動更新されます。手動で確認したい場合は右上の「更新」をタップしてください。(部門員が入力したもののうち、最新のものが表示されます。)
+            データは5分ごとに自動更新されます。手動で確認したい場合は右上の「更新」をタップしてください。部門員が入力したもののうち、最新のものが表示されます。
           </p>
         </div>
       </div>
