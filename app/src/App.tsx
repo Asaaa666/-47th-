@@ -90,7 +90,7 @@ const normalizePublicAssetUrl = (value: string): string => {//public配下の画
 };
 
 const PUBLIC_LOGO_ASSET_URLS = Object.values(//ロゴをpublic配下の画像ファイルから取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
-  import.meta.glob('/public/**/*.{png,jpg,jpeg,webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
+  import.meta.glob('/public/**/*.{webp,svg,avif}', { eager: true, import: 'default' }) as Record<string, string>
 ).filter(Boolean).map(value => normalizePublicAssetUrl(String(value)));//public配下の画像ファイルのURLを取得するためのコードです。import.meta.globを使って、publicディレクトリ内のすべての画像ファイルを取得し、そのURLを配列として返します。filter(Boolean)は、nullやundefinedを除外するために使われます。
 
 const isKnownPublicLogoAsset = (candidate: string): boolean => {
@@ -199,6 +199,11 @@ const resolveLogoSrc = async (originalLogo: string, groupName: string): Promise<
   if (pending) return pending;//解決中のPromiseが存在する場合は、それを返す。解決中のPromiseが存在しない場合は、次の処理に進む。
 
   const candidates = Array.from(new Set(getLogoSrcCandidates(originalLogo, groupName)));//ロゴ候補を取得し、重複を除去して高速化する。
+  const normalizedOriginal = normalizePublicAssetUrl(originalLogo);
+  if (!isAbsoluteLogoReference(normalizedOriginal) && /\.webp$/i.test(normalizedOriginal)) {
+    logoResolutionCacheRef.current[cacheKey] = normalizedOriginal;
+    return normalizedOriginal;
+  }
 
   const promise = (async () => {
     const knownPublicAsset = candidates.find(isKnownPublicLogoAsset);
