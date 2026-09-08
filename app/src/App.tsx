@@ -219,6 +219,17 @@ const getTimeAgo = (dateString: string): string => {//　更新日時の文字�
   return `${diffInDays}日前`;// 7日以上なら「〇日前」と表示
 };
 
+const getGroupDataKey = (group: Group): string => JSON.stringify([
+  group.name,
+  group.description,
+  group.location,
+  group.logo,
+  group.status,
+  group.waitingTime,
+  group.lastUpdated,
+  group.category,
+]);
+
 const normalizeWaitingTime = (value: string | undefined): string => {
   const normalized = (value ?? '').toString().trim().replace(/\s+/g, '');
   if (!normalized || normalized === 'ー' || normalized === '—' || normalized === '-') return 'ー';
@@ -391,6 +402,9 @@ export default function App() {//アプリを動かすためのコード
   const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
   const [coords, setCoords] = useState<Coordinate[]>([]);//setCoordsとは、座標の情報を格納するためのステート変数です。初期値は空の配列です。
   const [loading, setLoading] = useState(true);//setLoadingとは、データの読み込み中かどうかを示すためのステート変数です。初期値はtrueです。
+  const [listFocusedGroupName, setListFocusedGroupName] = useState<string | null>(null);
+  const [refreshResult, setRefreshResult] = useState<{ type: 'changed' | 'unchanged' | 'error'; count?: number } | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');//setSearchTermとは、検索キーワードを格納するためのステート変数です。初期値は空文字です。ステート変数とは、Reactコンポーネント内で状態を管理するための変数です。useStateフックを使って定義されます。useStateフックとは、Reactで状態を管理するためのフックです。useStateフックを使うことで、コンポーネント内で状態を持つことができます。useStateフックは、初期値を引数に取り、現在の状態と状態を更新するための関数を返します。
   
@@ -555,10 +569,16 @@ export default function App() {//アプリを動かすためのコード
   };
 
   // GAS から団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する。
-  const fetchData = async () => {//GASから団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する非同期関数です。
+  const fetchData = async (showRefreshResult = false) => {//GASから団体データ・座標・更新情報をまとめて取得して、画面表示用に整形する非同期関数です。
     if (fetchInFlightRef.current) return;//すでにデータ取得中の場合は何もしない
     fetchInFlightRef.current = true;//データ取得中フラグを立てる
     setLoadError(false);
+    if (showRefreshResult) {
+      setIsRefreshing(true);
+      setRefreshResult(null);
+    }
+
+    const previousGroups = groups;
 
     try {
       const cached = restoreCachedData();//キャッシュされたデータを復元する関数を呼び出して、キャッシュされたデータを取得する。キャッシュされたデータが存在しない場合はnullを返す。
@@ -667,12 +687,19 @@ export default function App() {//アプリを動かすためのコード
 
       setGroups(mergedGroups);
       persistCachedData(mergedGroups, parsedCoords);
+      if (showRefreshResult) {
+        const previousByName = new Map(previousGroups.map(group => [group.name, getGroupDataKey(group)]));
+        const changedCount = mergedGroups.filter(group => previousByName.get(group.name) !== getGroupDataKey(group)).length;
+        setRefreshResult(changedCount > 0 ? { type: 'changed', count: changedCount } : { type: 'unchanged' });
+      }
     } catch (error) {
       console.error("データの取得に失敗しました:", error);
       setLoadError(true);
+      if (showRefreshResult) setRefreshResult({ type: 'error' });
     } finally {
       setLoading(false);
       fetchInFlightRef.current = false;
+      if (showRefreshResult) setIsRefreshing(false);
     }
   };
 
@@ -738,6 +765,13 @@ export default function App() {//アプリを動かすためのコード
     }
   });
 
+  const orderedFilteredGroups = listFocusedGroupName
+    ? [
+      ...filteredGroups.filter(group => group.name === listFocusedGroupName),
+      ...filteredGroups.filter(group => group.name !== listFocusedGroupName),
+    ]
+    : filteredGroups;
+
   const presetLocations = [
     'すべて', '中学・高校棟 1階', '中学・高校棟 2階', '中学棟 3階', '中学棟 4階', '中学棟 5階', '高校棟 3階', '高校棟 4階', '高校棟 5階', '打越アリーナ', '屋台', 'その他'
   ];
@@ -760,6 +794,7 @@ export default function App() {//アプリを動かすためのコード
 
     if (targetLocation && getMapImageSources(targetLocation)) {
       setHighlightedGroupName(groupName);
+      setListFocusedGroupName(groupName);
 
       if (filterLocation !== targetLocation) {
         setFilterLocation(targetLocation);
@@ -817,13 +852,27 @@ export default function App() {//アプリを動かすためのコード
             >
               📖 詳細ガイド
             </button>
-            <button onClick={fetchData} disabled={loading} className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-sm">
-              <span className={loading ? 'animate-spin inline-block' : ''}>🔄</span>
-              <span>{loading ? '読込中...' : '更新'}</span>
+            <button onClick={() => fetchData(true)} disabled={loading || isRefreshing} className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-sm">
+              <span className={loading || isRefreshing ? 'animate-spin inline-block' : ''}>🔄</span>
+              <span>{loading || isRefreshing ? '読込中...' : '更新'}</span>
             </button>
           </div>
         </div>
       </header>
+
+      {refreshResult && (
+        <div className={`mx-auto mt-4 max-w-6xl rounded-xl border px-4 py-3 text-sm font-bold shadow-sm ${
+          refreshResult.type === 'changed'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : refreshResult.type === 'unchanged'
+              ? 'border-slate-200 bg-slate-50 text-slate-700'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+        }`} role="status">
+          {refreshResult.type === 'changed' && `${refreshResult.count}団体の情報が更新されました`}
+          {refreshResult.type === 'unchanged' && '更新された団体はありませんでした'}
+          {refreshResult.type === 'error' && '更新に失敗しました。通信環境を確認してください'}
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 mt-6 space-y-6 relative z-10">
         {loadError && groups.length === 0 && (
@@ -831,7 +880,7 @@ export default function App() {//アプリを動かすためのコード
             <p className="text-sm font-bold text-amber-900">団体情報を読み込めませんでした</p>
             <p className="mt-1 text-xs text-amber-800">通信環境を確認して、もう一度お試しください。</p>
             <button
-              onClick={fetchData}
+              onClick={() => fetchData()}
               disabled={loading}
               className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50"
             >
@@ -846,6 +895,7 @@ export default function App() {//アプリを動かすためのコード
             <div className="flex items-center space-x-3">
               <span className="text-2xl animate-bounce">🎯</span>
               <div>
+
                 <h3 className="font-bold text-sm text-purple-100">座標測定モードが有効です</h3>
                 <p className="text-xs text-purple-300">マップ画像のピンを打ちたい場所を直接タップ/クリックしてください。</p>
               </div>
@@ -1317,14 +1367,16 @@ export default function App() {//アプリを動かすためのコード
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group, idx) => {
+              {orderedFilteredGroups.map((group, idx) => {
                 const timeAgoStr = getTimeAgo(group.lastUpdated);
+                const isListFocused = listFocusedGroupName === group.name;
 
                 return (
                   <div
                     key={idx}
                     onClick={() => handleItemClick(group.name, 'list')}
-                    className="group flex cursor-pointer flex-col justify-between space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_12px_30px_rgba(59,130,246,0.12)]"
+                    className={`group flex cursor-pointer flex-col justify-between space-y-3 rounded-2xl border bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_12px_30px_rgba(59,130,246,0.12)] ${isListFocused ? 'border-amber-400 ring-2 ring-amber-200 shadow-[0_12px_30px_rgba(245,158,11,0.18)]' : 'border-slate-200'}`}
+                    aria-current={isListFocused ? 'true' : undefined}
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-3">
@@ -1336,6 +1388,7 @@ export default function App() {//アプリを動かすためのコード
                             <h3 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition line-clamp-1">
                               {group.name}
                             </h3>
+                            {isListFocused && <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">選択中・マップ表示中</span>}
                             <div className="mt-1 flex flex-wrap gap-1">
                               <span className="rounded border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
                                 📍 {group.location}
