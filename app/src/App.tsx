@@ -476,6 +476,12 @@ export default function App() {//アプリを動かすためのコード
   }, [filterLocation]);//filterLocationが変更されるたびに実行されます。
 
   useEffect(() => {
+    if (filterLocation !== 'すべて') {
+      setFilterCategory('すべて');
+    }
+  }, [filterLocation]);
+
+  useEffect(() => {
     if (!showGuide || !shouldScrollGuideDetailRef.current) return;
 
     shouldScrollGuideDetailRef.current = false;
