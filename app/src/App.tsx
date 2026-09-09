@@ -1148,7 +1148,7 @@ export default function App() {//アプリを動かすためのコード
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <h3 className="text-xs font-black text-sky-900 tracking-wide">👀 すぐ見える使い方</h3>
-              <p className="text-[11px] text-sky-700 mt-1">1. 検索や絞り込みで候補を出す → 2. ピンまたは一覧をタップ → 3. 右上の更新で最新化</p>
+              <p className="text-[11px] text-sky-700 mt-1">1. 検索や絞り込みで候補を出す → 2. ピンまたは一覧をタップ → 3. 団体の場所や状況をチェック！</p>
             </div>
             <button
               onClick={() => {
