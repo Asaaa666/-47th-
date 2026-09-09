@@ -39,7 +39,7 @@ export const getUnifiedLocationGroup = (rawLocation) => {
   const location = (rawLocation ?? '').toString();
   if (!location) return 'その他';
   if (location.includes('清和書林') || location.includes('清話書林') || location.includes('ハンドボールコートB')) return 'その他';
-  if (location.includes('屋台（10時より開始）') || location.includes('ハンドボールコート')) return '屋台（10時より開始）';
+  if (location.includes('屋台') || location.includes('ハンドボールコート')) return '屋台（10時より開始）';
   if (location.includes('アリーナ') || location.includes('打越アリーナ')) return '打越アリーナ';
   if (location.includes('中学棟 1階') || location.includes('高校棟 1階') || (location.includes('1階') && (location.includes('中学') || location.includes('高校')))) return '中学・高校棟 1階';
   if (location.includes('中学棟 2階') || location.includes('高校棟 2階') || (location.includes('2階') && (location.includes('中学') || location.includes('高校')))) return '中学・高校棟 2階';

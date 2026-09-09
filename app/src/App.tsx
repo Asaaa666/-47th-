@@ -483,9 +483,15 @@ export default function App() {//アプリを動かすためのコード
   }, [showGuide]);
 
   // 表示中のピンの中で「最も待ち時間が低い（空いている）」団体を自動選択
-  const activePins = coords.filter(pin => pin.location === filterLocation);//現在のフィルターに一致する座標を取得します。
+  const activePins = coords.filter(pin => getUnifiedLocationGroup(pin.location) === getUnifiedLocationGroup(filterLocation));//現在のフィルターに一致する座標を取得します。
   
   useEffect(() => {//activePinsが変更されるたびに実行されます。
+    if (filterLocation === 'すべて') {
+      setHighlightedGroupName(null);
+      setListFocusedGroupName(null);
+      return;
+    }
+
     if (activePins.length > 0) {//activePinsが1つ以上存在する場合は、最も待ち時間が低い団体を自動選択します。
       const exists = activePins.some(p => p.groupName === highlightedGroupName);//現在のハイライト団体がactivePinsに存在するかどうかを確認します。
       if (!exists) {//現在のハイライト団体がactivePinsに存在しない場合は、最も待ち時間が低い団体を自動選択します。
