@@ -303,7 +303,7 @@ const getWaitingSortScore = (waitingTime: string | undefined): number => {
 };
 
 const WAITING_LEVEL_MEANINGS: Record<number, { label: string; detail: string }> = {
-  1: { label: 'とても空いている', detail:'目安 0分 または営業前' },
+  1: { label: 'とても空いている、又は営業前', detail:'目安 0分 または営業前' },
   2: { label: 'かなり空いている', detail: '目安 1-3分' },
   3: { label: 'ふつう', detail: '目安 4-7分' },
   4: { label: 'かなり混雑', detail: '目安 8-14分' },
