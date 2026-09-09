@@ -303,7 +303,7 @@ const getWaitingSortScore = (waitingTime: string | undefined): number => {
 };
 
 const WAITING_LEVEL_MEANINGS: Record<number, { label: string; detail: string }> = {
-  1: { label: 'とても空いている、又は営業前', detail:'目安 0分 または営業前(10時以降は基本営業中）' },
+  1: { label: 'とても空いている', detail:'目安 0分 または営業前(10時以降は基本営業中）' },
   2: { label: 'かなり空いている', detail: '目安 1-3分' },
   3: { label: 'ふつう', detail: '目安 4-7分' },
   4: { label: 'かなり混雑', detail: '目安 8-14分' },
@@ -1001,7 +1001,7 @@ export default function App() {//アプリを動かすためのコード
           <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-green-100 text-green-700 mb-1">
             レベル 1
           </span>
-          <span className="font-bold text-slate-800 text-xs">とても空いている、又は営業前</span>
+          <span className="font-bold text-slate-800 text-xs">とても空いている</span>
           <span className="text-[10px] text-slate-400 mt-0.5">目安 0分 または営業前(10時以降は基本営業中）</span>
         </div>
 
