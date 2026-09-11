@@ -864,10 +864,6 @@ export default function App() {//アプリを動かすためのコード
             >
               📖 詳細ガイド
             </button>
-            <button onClick={() => fetchData(true)} disabled={loading || isRefreshing} className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-sm">
-              <span className={loading || isRefreshing ? 'animate-spin inline-block' : ''}>🔄</span>
-              <span>{loading || isRefreshing ? '読込中...' : '更新'}</span>
-            </button>
           </div>
         </div>
       </header>
@@ -987,7 +983,7 @@ export default function App() {//アプリを動かすためのコード
         <div>
           <h4 className="font-bold text-xs text-slate-800">3. リアルタイム更新</h4>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">
-            データは5分ごとに自動更新されます。手動で確認したい場合は右上の「更新」をタップしてください。部門員が入力したもののうち、最新のものが表示されます。
+            データは5分ごとに自動更新されます。部門員が入力したもののうち、最新のものが表示されます。
           </p>
         </div>
       </div>
