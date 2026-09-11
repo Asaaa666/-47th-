@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';//アプリを動かす使�
 import { normalizeCategoryValue, getUnifiedLocationGroup, matchesSearchQuery } from './searchUtils';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyUoVxcp4mqV50FmMx0H3dMn70TpoaNGbFAQ-LQphUZuA-lUbciQus4fMtgI70R136NFQ/exec";//読み込むスプレットシートを選択するコード
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw33wQjhzaXRUMx4gI6qi1CrMaYwZB2YbR01Ti582EOhPu-mbh6jgdx1mhILboYs4CDHg/exec";//読み込むスプレットシートを選択するコード
 
 interface Group {//団体の情報を格納するためのインターフェース
   name: string;//団体名
@@ -401,7 +401,7 @@ function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName 
 export default function App() {//アプリを動かすためのコード
   const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
   const [coords, setCoords] = useState<Coordinate[]>([]);//setCoordsとは、座標の情報を格納するためのステート変数です。初期値は空の配列です。
-  const [loading, setLoading] = useState(true);//setLoadingとは、データの読み込み中かどうかを示すためのステート変数です。初期値はtrueです。
+  const [loading, setLoading] = useState(false);//データ取得を一時停止しているため、初期ローディングは表示しません。
   const [listFocusedGroupName, setListFocusedGroupName] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<{ type: 'changed' | 'unchanged' | 'error'; count?: number } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -715,28 +715,6 @@ export default function App() {//アプリを動かすためのコード
     }
   };
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchData();
-      }
-    };
-
-    fetchData();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        fetchData();
-      }
-    }, 5 * 60 * 1000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
-    };
-  }, []);
-
   const uniqueCategories = Array.from(new Set(groups.map(g => normalizeCategoryValue(g.category)).filter(Boolean)));
   const categoryOptions = ['すべて', ...uniqueCategories];
 
@@ -888,11 +866,10 @@ export default function App() {//アプリを動かすためのコード
             <p className="text-sm font-bold text-amber-900">団体情報を読み込めませんでした</p>
             <p className="mt-1 text-xs text-amber-800">通信環境を確認して、もう一度お試しください。</p>
             <button
-              onClick={() => fetchData()}
-              disabled={loading}
+              disabled
               className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50"
             >
-              再試行
+              現在停止中
             </button>
           </div>
         )}
