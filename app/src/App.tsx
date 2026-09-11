@@ -401,7 +401,7 @@ function LogoImage({ originalLogo, groupName, alt, className, fallbackClassName 
 export default function App() {//アプリを動かすためのコード
   const [groups, setGroups] = useState<Group[]>([]);//setGroupsとは、グループの情報を格納するためのステート変数です。初期値は空の配列です。
   const [coords, setCoords] = useState<Coordinate[]>([]);//setCoordsとは、座標の情報を格納するためのステート変数です。初期値は空の配列です。
-  const [loading, setLoading] = useState(false);//データ取得を一時停止しているため、初期ローディングは表示しません。
+  const [loading, setLoading] = useState(true);//データの読み込み中かどうかを示すステート変数です。
   const [listFocusedGroupName, setListFocusedGroupName] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<{ type: 'changed' | 'unchanged' | 'error'; count?: number } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -714,6 +714,21 @@ export default function App() {//アプリを動かすためのコード
       if (showRefreshResult) setIsRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData();
+      }
+    };
+
+    fetchData();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const uniqueCategories = Array.from(new Set(groups.map(g => normalizeCategoryValue(g.category)).filter(Boolean)));
   const categoryOptions = ['すべて', ...uniqueCategories];
