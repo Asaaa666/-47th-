@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';//アプリを動かす使�
 import { normalizeCategoryValue, getUnifiedLocationGroup, matchesSearchQuery } from './searchUtils';
 
 // ⚠️ STEP 2で取得したGASのWebアプリURLをここに貼り付けてください
-const GAS_API_URL = "https://docs.google.com/spreadsheets/d/1W4vJaSM0jlOQcjE-TstUby6v0K1bJeSY3GnSH8BDKhA/edit?usp=sharing";//読み込むスプレットシートを選択するコード
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxMsWNEnJZDox7_fMohZVAgE4KIuDDxFN-8OD-upAjl-BpeRVGpwVqH4ZF_2N-1iYNVwQ/exec";//読み込むスプレットシートを選択するコード
 
 interface Group {//団体の情報を格納するためのインターフェース
   name: string;//団体名
