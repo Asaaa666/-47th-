@@ -234,7 +234,7 @@ const normalizeWaitingTime = (value: string | undefined): string => {
   const normalized = (value ?? '').toString().trim().replace(/\s+/g, '');
   if (!normalized || normalized === 'ー' || normalized === '—' || normalized === '-') return 'ー';
   if (normalized === '休止中' || normalized === '休止') return '休止中';
-  if (normalized === '売り切れ' || normalized === '売切れ') return '売り切れ';
+  if (normalized === '受付終了' || normalized === '売り切れ' || normalized === '売切れ') return '受付終了';
   return normalized;
 };
 
@@ -263,10 +263,10 @@ const getWaitingDisplayInfo = (value: string | undefined) => {//待ち時間の�
     };
   }
 
-  if (normalized === '売り切れ') {
+  if (normalized === '受付終了') {
     return {
       kind: 'soldout' as const,//待ち時間が売り切れの場合は、売り切れの表示情報を返す。
-      displayText: '売り切れ',
+      displayText: '受付終了',
       sortScore: 7,
       borderClass: 'border-rose-600',
       bgClass: 'bg-rose-600',
@@ -319,7 +319,7 @@ const getWaitingMeaning = (waitingTime: string | undefined): { label: string; de
   }
 
   if (info.kind === 'paused') return { label: '一時休止中', detail: '現在は案内を停止中' };
-  if (info.kind === 'soldout') return { label: '受付終了', detail: '売り切れ・配布終了' };
+  if (info.kind === 'soldout') return { label: '売り切れ', detail: '売り切れ・配布終了' };
   if (info.kind === 'empty') return { label: '未入力', detail: '混雑情報はまだ未登録' };
 
   return { label: info.displayText, detail: '現地表示をご確認ください' };
@@ -1044,12 +1044,12 @@ export default function App() {//アプリを動かすためのコード
           <span className="text-[10px] text-slate-400 mt-0.5">展示や営業を休止中</span>
         </div>
 
-        {/* 売り切れ */}
+        {/* 受付終了 */}
         <div className="bg-white p-2.5 rounded-xl border border-rose-400 shadow-sm flex flex-col items-center text-center hover:border-rose-500 transition">
           <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 mb-1">
-            売り切れ
+            受付終了
           </span>
-          <span className="font-bold text-slate-800 text-xs">受付終了</span>
+          <span className="font-bold text-slate-800 text-xs">売り切れ</span>
           <span className="text-[10px] text-slate-400 mt-0.5">品切れ・配布終了</span>
         </div>
       </div>
@@ -1419,7 +1419,7 @@ export default function App() {//アプリを動かすためのコード
                             }
                             return (
                               <div className="flex flex-col items-end leading-tight">
-                                <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
+                                <span className={`${waitingInfo.kind === 'soldout' ? 'text-lg' : 'text-xs'} font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
                                 <span className="text-[10px] font-semibold text-slate-500">{waitingMeaning.label}</span>
                               </div>
                             );
@@ -1505,7 +1505,7 @@ export default function App() {//アプリを動かすためのコード
                   }
                   return (
                     <div className="flex flex-col items-end leading-tight">
-                      <span className={`text-xs font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
+                      <span className={`${waitingInfo.kind === 'soldout' ? 'text-lg' : 'text-xs'} font-black ${waitingInfo.textClass}`}>{waitingInfo.displayText}</span>
                       <span className="text-[10px] font-semibold text-orange-700">{waitingMeaning.label}</span>
                     </div>
                   );
