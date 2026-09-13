@@ -574,7 +574,7 @@ export default function App() {//アプリを動かすためのコード
       '高校棟 4階': `/高校棟四階.webp?v=${MAP_ASSET_VERSION}`,
       '高校棟 5階': `/高校棟五階.webp?v=${MAP_ASSET_VERSION}`,
       '打越アリーナ': `/打越アリーナ.webp?v=${MAP_ASSET_VERSION}`,
-      '屋台': `/屋台村.webp?v=${MAP_ASSET_VERSION}`
+      '屋台（10時より開始）': `/屋台村.webp?v=${MAP_ASSET_VERSION}`
     };
 
     return mapImageMap[buttonName] || null;//ボタン名に対応するマップ画像のURLを返す。対応するマップ画像がない場合はnullを返す。
@@ -778,7 +778,7 @@ export default function App() {//アプリを動かすためのコード
     : filteredGroups;
 
   const presetLocations = [
-    'すべて', '中学・高校棟 1階', '中学・高校棟 2階', '中学棟 3階', '中学棟 4階', '中学棟 5階', '高校棟 3階', '高校棟 4階', '高校棟 5階', '打越アリーナ', '屋台', 'その他'
+    'すべて', '中学・高校棟 1階', '中学・高校棟 2階', '中学棟 3階', '中学棟 4階', '中学棟 5階', '高校棟 3階', '高校棟 4階', '高校棟 5階', '打越アリーナ', '屋台（10時より開始）', 'その他'
   ];
 
   const currentMapSources = getMapImageSources(filterLocation);
